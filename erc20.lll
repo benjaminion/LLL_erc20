@@ -55,15 +55,6 @@
   (def 'revert (revert 0 0))
   
   ;; --------------------------------------------------------------------------
-  ;; @notice Will revert if sent any Ether. Use the macor immediately so as to
-  ;;         abort id sent any Ether during contract deployment.
-
-  (def 'not-payable
-    (when (callvalue) revert))
-
-  not-payable
-  
-  ;; --------------------------------------------------------------------------
   ;; @notice For returning string names.
 
   (def 'return-string (string-literal) (return 0x00 string-literal))
@@ -91,10 +82,18 @@
   ;;         short address attack". For another, it stops me making
   ;;         mistakes while testing.
 
-  (def 'has-no-args    (unless (= 0x04 (calldatasize)) revert))
   (def 'has-one-arg    (unless (= 0x24 (calldatasize)) revert))
   (def 'has-two-args   (unless (= 0x44 (calldatasize)) revert))
   (def 'has-three-args (unless (= 0x64 (calldatasize)) revert))
+  
+  ;; --------------------------------------------------------------------------
+  ;; @notice Will revert if sent any Ether. Use the macro immediately so as to
+  ;;         abort if sent any Ether during contract deployment.
+
+  (def 'not-payable
+    (when (callvalue) revert))
+
+  not-payable
   
   ;; --------------------------------------------------------------------------
   ;; INITIALISATION
@@ -178,6 +177,7 @@
           ;; It would be good to check invariants (sum of balances).
           (sstore (caller) (- (mload scratch) value))
           (sstore to (+ (sload to) value))
+;; TODO - Transfer event          
           (return true)))
       
       ;; ----------------------------------------------------------------------
