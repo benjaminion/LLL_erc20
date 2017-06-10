@@ -29,7 +29,6 @@
   ;; Storage layout
   
   ;; Precomputed function IDs.
-  ;; @todo Check these against some existing ERC20 bytecode.
   (def 'get-name         0x06fdde03) ; name()
   (def 'get-symbol       0x95d89b41) ; symbol()
   (def 'get-decimals     0x313ce567) ; decimals()
@@ -40,10 +39,13 @@
   (def 'approve          0x095ea7b3) ; approve(address,uint256)
   (def 'get-allowance    0xdd62ed3e) ; allowance(address,address)
 
-  ;; Events
-  (def 'transfer-event (invalid))
-  (def 'approval-event (invalid))
-
+  ;; Event IDs - need to check these
+  (def 'transfer-event-id ; Transfer(address,address,uint256)
+    0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef)
+  
+  (def 'approval-event-id ; Approval(address,address,uint256)
+    0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925)
+  
   ;; Function arguments
   (def 'arg1 (calldataload 0x04))
   (def 'arg2 (calldataload 0x24))
@@ -166,18 +168,25 @@
           (def 'to    arg1)
           (def 'value arg2)
 
-          ;; The caller's balance.
-          (mstore scratch (sload (caller)))
+          (when value ; value == 0 is a no-op
+            (seq
+            
+              ;; The caller's balance.
+              (mstore scratch (sload (caller)))
 
-          ;; Revert if the caller's balance is not sufficient.
-          (when (> value (mload scratch))
-            revert)
+              ;; Revert if the caller's balance is not sufficient.
+              (when (> value (mload scratch))
+                revert)
 
-          ;; Make the transfer
-          ;; It would be good to check invariants (sum of balances).
-          (sstore (caller) (- (mload scratch) value))
-          (sstore to (+ (sload to) value))
-;; TODO - Transfer event          
+              ;; Make the transfer
+              ;; It would be good to check invariants (sum of balances).
+              (sstore (caller) (- (mload scratch) value))
+              (sstore to (+ (sload to) value))))
+
+          ;; Event
+          (mstore scratch 'transfer-event-id)
+          (log3 0x00 0x20 (caller) to value)
+          
           (return true)))
       
       ;; ----------------------------------------------------------------------
@@ -196,6 +205,10 @@
           (def 'to    arg2)
           (def 'value arg3)
 ;; TODO
+          ;; Event
+          (mstore scratch 'transfer-event-id)
+          (log3 0x00 0x20 from to value)
+          
           (return false)))
 
       ;; ----------------------------------------------------------------------
@@ -214,6 +227,10 @@
           (def 'spender arg1)
           (def 'value   arg2)
 ;; TODO
+          ;; Event
+          (mstore scratch 'approval-event-id)
+          (log3 0x00 0x20 (caller) spender value)
+          
           (return false)))
       
       ;; ----------------------------------------------------------------------
@@ -229,7 +246,7 @@
           (def 'owner   arg1)
           (def 'spender arg2)
 ;; TODO
-        (return 0)))
+          (return 0)))
       
       ;; ----------------------------------------------------------------------
       ;; @notice Fallback: No functions matched the function ID provided.
