@@ -1,0 +1,103 @@
+;;; ---------------------------------------------------------------------------
+;;; @title Implementation of an ERC20 Token contract in LLL
+;;; @author Ben Edgington
+
+(seq
+
+  ;; --------------------------------------------------------------------------
+  ;; Constant definitions.
+
+  ;; Token parameters.
+  (def 'token-name-string   (lit 0x00 "Ben Token"))
+  (def 'token-symbol-string (lit 0x00 "BEN"))
+  (def 'token-decimals 2)
+  (def 'token-supply 100000) ; 1000.00 total tokens
+  
+  ;; Memory layout.
+  (def 'scratch  0x00) ; Used for function ID and return values.
+  
+  ;; Precomputed function IDs.
+  ;; @todo Check these against some existing ERC20 bytecode.
+  (def 'get-name         0x06fdde03) ; name()
+  (def 'get-symbol       0x95d89b41) ; symbol()
+  (def 'get-decimals     0x313ce567) ; decimals()
+  (def 'get-total-supply 0x18160ddd) ; totalSupply()
+  (def 'get-balance-of   0x70a08231) ; balanceOf(address)
+  (def 'transfer         0xa9059cbb) ; transfer(address,uint256)
+  (def 'transfer-from    0x23b872dd) ; transferFrom(address,address,uint256)
+  (def 'approve          0x095ea7b3) ; approve(address,uint256)
+  (def 'get-allowance    0xdd62ed3e) ; allowance(address,address)
+
+  ;; Events
+  (def 'transfer-event (invalid))
+  (def 'approval-event (invalid))
+
+  ;; --------------------------------------------------------------------------
+  ;; @notice Revert is a soft return that does not consume the remaining gas.
+
+  (def 'revert (revert 0 0))
+  
+  ;; --------------------------------------------------------------------------
+  ;; @notice Barf if sent any Ether during contract creation.
+
+  (when (callvalue) revert)
+  
+  ;; --------------------------------------------------------------------------
+  ;; @notice For returning string names.
+
+  (def 'return-string (string-literal) (return 0x00 string-literal))
+
+  ;; --------------------------------------------------------------------------
+  ;; @notice Determines whether the stored function ID matches a known
+  ;;         function hash and executes <code-body> if so.
+  ;; @param function-hash The four-byte hash of a known function signature.
+  ;; @param code-body The code to run in the case of a match.
+
+  (def 'function (function-hash code-body)
+    (when (= (mload scratch) function-hash)
+      code-body))
+
+  ;; --------------------------------------------------------------------------
+  ;; @notice Gets the function ID and stores it in memory for reference.
+  ;; @dev The function ID is in the leftmost four bytes of the call data.
+
+  (def 'get-function-id
+    (mstore scratch (div (calldataload 0x00) (exp 2 224))))
+    
+  ;; --------------------------------------------------------------------------
+  ;; Constructor
+  ;;
+  ;; @notice Assign all tokens initially to the owner of the contract.
+  ;; @dev The location and length of the two string constants are stored.
+  
+  (sstore (caller) token-supply)
+
+  (returnlll
+    (seq get-function-id
+      
+      ;; ----------------------------------------------------------------------
+      ;; @notice Barf if sent any Ether during contract execution
+
+      (when (callvalue) revert)
+      
+      ;; ----------------------------------------------------------------------
+      ;; @notice Returns the name of the token
+      ;; @dev Signature: name()
+      ;; @return The token name as a string
+
+      (function get-name
+	(return-string token-name-string))
+
+      ;; ----------------------------------------------------------------------
+      ;; @notice Returns the symbol of the token
+      ;; @dev Signature: symbol()
+      ;; @return The token symbol as an ASCII string
+
+      (function get-symbol
+	(return-string token-symbol-string))
+
+      ;; ----------------------------------------------------------------------
+      ;; @notice Fallback: No functions matched the function ID provided.
+
+      revert))
+  )
