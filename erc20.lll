@@ -11,7 +11,7 @@
 (seq
 
   ;; --------------------------------------------------------------------------
-  ;; Constant definitions.
+  ;; CONSTANTS
 
   ;; Token parameters.
   (def 'token-name-string   (lit 0x00 "Ben Token"))
@@ -24,9 +24,18 @@
   (def 'true 1)
 
   ;; Memory layout.
-  (def 'scratch  0x00)
-
+  (def 'scratch0 0x00)
+  (def 'scratch1 0x20) 
+  
   ;; Storage layout
+  ;; @notice Balances are stored at s[address].
+  (def 'balance (address) address)
+  ;; @notice Allowances are stored at s[owner + 2*spender + 1]
+  ;; @dev This is a bit tricky. The 2* is to break symmetry so that setting
+  ;;      allowance(a1,a2) doesn't also set allowance(a2,a1).
+  ;;      The +1 covers the case spender == 0 which could lead to issues
+  ;;      such as setting my balance to 0 by incorrectly calling approve().
+  (def 'allowance (owner spender) (+ 1 (+ owner (* 2 spender))))
   
   ;; Precomputed function IDs.
   (def 'get-name         0x06fdde03) ; name()
@@ -39,13 +48,16 @@
   (def 'approve          0x095ea7b3) ; approve(address,uint256)
   (def 'get-allowance    0xdd62ed3e) ; allowance(address,address)
 
-  ;; Event IDs - need to check these
+  ;; Event IDs
   (def 'transfer-event-id ; Transfer(address,address,uint256)
     0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef)
   
   (def 'approval-event-id ; Approval(address,address,uint256)
     0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925)
   
+  ;; --------------------------------------------------------------------------
+  ;; UTILITIES
+
   ;; Function arguments
   (def 'arg1 (calldataload 0x04))
   (def 'arg2 (calldataload 0x24))
@@ -68,7 +80,7 @@
   ;; @param code-body The code to run in the case of a match.
 
   (def 'function (function-hash code-body)
-    (when (= (mload scratch) function-hash)
+    (when (= (mload scratch0) function-hash)
       code-body))
 
   ;; --------------------------------------------------------------------------
@@ -76,10 +88,17 @@
   ;; @dev The function ID is in the leftmost four bytes of the call data.
 
   (def 'uses-functions
-    (mstore scratch (div (calldataload 0x00) (exp 2 224))))
+    (mstore
+      scratch0
+      (div
+        (calldataload 0x00)
+        0x0000000100000000000000000000000000000000000000000000000000000000)))
 
   ;; --------------------------------------------------------------------------
-  ;; @notice Checks to ensure that each function is called with the right
+  ;; GUARDS
+
+  ;; --------------------------------------------------------------------------
+  ;; @notice Checks that ensure that each function is called with the right
   ;;         number of arguments. For one thing this addresses the "ERC20
   ;;         short address attack". For another, it stops me making
   ;;         mistakes while testing.
@@ -88,6 +107,23 @@
   (def 'has-two-args   (unless (= 0x44 (calldatasize)) revert))
   (def 'has-three-args (unless (= 0x64 (calldatasize)) revert))
   
+  ;; --------------------------------------------------------------------------
+  ;; @notice Check that addresses have only 160 bits and revert if not.
+
+  (def 'is-address (addr)
+    (when
+      (and
+        addr
+        0xffffffffffffffffffffffff0000000000000000000000000000000000000000)
+      revert))
+
+  ;; --------------------------------------------------------------------------
+  ;; @notice Check that transfer values are smaller than total supply and
+  ;;         revert if not. This should effectively exclude negative values.
+
+  (def 'is-value (value)
+    (when (> value token-supply) revert))
+
   ;; --------------------------------------------------------------------------
   ;; @notice Will revert if sent any Ether. Use the macro immediately so as to
   ;;         abort if sent any Ether during contract deployment.
@@ -103,7 +139,7 @@
   ;; @notice Assign all tokens initially to the owner of the contract.
   ;; @dev The location and length of the two string constants are stored.
   
-  (sstore (caller) token-supply)
+  (sstore (balance (caller)) token-supply)
 
   ;; --------------------------------------------------------------------------
   ;; CONTRACT CODE
@@ -150,9 +186,11 @@
       ;; @return The account balance.
 
       (function get-balance-of
-        (seq has-one-arg
+        (seq has-one-arg (is-address arg1)
+
           (def 'owner arg1)
-          (return (sload owner))))
+
+          (return (sload (balance owner)))))
       
       ;; ----------------------------------------------------------------------
       ;; @notice Transfers _value amount of tokens to address _to. The command
@@ -164,35 +202,34 @@
       ;; @return Success (true) or failure (false) of the transfer.
 
       (function transfer
-        (seq has-two-args
+        (seq has-two-args (is-address arg1) (is-value arg2)
+
           (def 'to    arg1)
           (def 'value arg2)
-
+          
           (when value ; value == 0 is a no-op
             (seq
             
-              ;; The caller's balance.
-              (mstore scratch (sload (caller)))
+              ;; The caller's balance. Save in memory for efficiency.
+              (mstore scratch0 (sload (balance (caller))))
 
               ;; Revert if the caller's balance is not sufficient.
-              (when (> value (mload scratch))
+              (when (> value (mload scratch0))
                 revert)
 
               ;; Make the transfer
               ;; It would be good to check invariants (sum of balances).
-              (sstore (caller) (- (mload scratch) value))
-              (sstore to (+ (sload to) value))))
+              (sstore (balance (caller)) (- (mload scratch0) value))
+              (sstore (balance to) (+ (sload (balance to)) value))))
 
-          ;; Event
-          (mstore scratch 'transfer-event-id)
+          ;; Event Transfer(address,address,uint256)
+          (mstore scratch0 'transfer-event-id)
           (log3 0x00 0x20 (caller) to value)
           
           (return true)))
       
       ;; ----------------------------------------------------------------------
-      ;; @notice Allows _spender to withdraw from your account multiple times,
-      ;;         up to the _value amount. If this function is called again it
-      ;;         overwrites the current allowance with _value.
+      ;; @notice Send _value amount of tokens from address _from to address _to
       ;; @abi transferFrom(address,address,uint256) returns bool
       ;; @param from The account to send the tokens from.
       ;; @param to The account to receive the tokens.
@@ -200,13 +237,34 @@
       ;; @return Success (true) or failure (false) of the transfer.
 
       (function transfer-from
-        (seq has-three-args
+        (seq has-three-args (is-address arg1) (is-address arg2) (is-value arg3)
+
           (def 'from  arg1)
           (def 'to    arg2)
           (def 'value arg3)
-;; TODO
-          ;; Event
-          (mstore scratch 'transfer-event-id)
+
+          (when value ; value == 0 is a no-op
+
+            (seq
+              
+              ;; Save data to memory for efficiency.
+              (mstore scratch0 (sload (balance from)))
+              (mstore scratch1 (sload (allowance from (caller))))
+
+              ;; Revert if not enough funds, or not enough approved.
+              (when
+                (||
+                  (> value (mload scratch0))
+                  (> value (mload scratch1)))
+                revert)
+
+              ;; Make the transfer and update 
+              (sstore (balance from) (- (mload scratch0) value))
+              (sstore (balance to) (+ (sload (balance to)) value))
+              (sstore (allowance from (caller)) (- (mload scratch1) value))))
+
+          ;; Event Transfer(address,address,uint256)
+          (mstore scratch0 'transfer-event-id)
           (log3 0x00 0x20 from to value)
           
           (return false)))
@@ -220,15 +278,18 @@
       ;; @param value The maximum allowed amount.
       ;; @return Success (true) or failure (false) of the transfer.
 
-;;; TODO - To prevent attack vectors like the one described here and discussed here, make sure to force users set the allowance to 0 before setting it to another value for the same spender. See https://github.com/frozeman/EIPs/blob/2af51d6c80f3264199e3c77200928323ca231cf9/EIPS/eip-token-standard.md
+;;; TODO - To prevent attack vectors, make sure to force users set the allowance to 0 before setting it to another value for the same spender. See https://github.com/frozeman/EIPs/blob/2af51d6c80f3264199e3c77200928323ca231cf9/EIPS/eip-token-standard.md
       
       (function approve
-        (seq has-two-args
+        (seq has-two-args (is-address arg1) (is-value arg2)
+
           (def 'spender arg1)
           (def 'value   arg2)
-;; TODO
-          ;; Event
-          (mstore scratch 'approval-event-id)
+
+          (sstore (allowance (caller) spender) value)
+
+          ;; Event Approval(address,address,uint256)
+          (mstore scratch0 'approval-event-id)
           (log3 0x00 0x20 (caller) spender value)
           
           (return false)))
@@ -242,11 +303,12 @@
       ;; @return The allowed amount remaining.
 
       (function get-allowance
-        (seq has-two-args
+        (seq has-two-args (is-address arg1) (is-address arg2)
+
           (def 'owner   arg1)
           (def 'spender arg2)
-;; TODO
-          (return 0)))
+          
+          (return (sload (allowance owner spender)))))
       
       ;; ----------------------------------------------------------------------
       ;; @notice Fallback: No functions matched the function ID provided.
