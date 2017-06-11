@@ -109,12 +109,13 @@
   
   ;; --------------------------------------------------------------------------
   ;; @notice Check that addresses have only 160 bits and revert if not.
+  ;; @dev We use these input type-checks on the non-constant functions.
 
   (def 'is-address (addr)
     (when
-      (and
+      (div
         addr
-        0xffffffffffffffffffffffff0000000000000000000000000000000000000000)
+        0x0000000000000000000000010000000000000000000000000000000000000000)
       revert))
 
   ;; --------------------------------------------------------------------------
@@ -125,8 +126,8 @@
     (when (> value token-supply) revert))
 
   ;; --------------------------------------------------------------------------
-  ;; @notice Will revert if sent any Ether. Use the macro immediately so as to
-  ;;         abort if sent any Ether during contract deployment.
+  ;; @notice Will revert if sent any Ether. We use the macro immediately so as
+  ;;         to abort if sent any Ether during contract deployment.
 
   (def 'not-payable
     (when (callvalue) revert))
@@ -149,7 +150,7 @@
       
       ;; ----------------------------------------------------------------------
       ;; @notice Getter for the name of the token.
-      ;; @abi name() constant returns string
+      ;; @abi name() constant returns (string)
       ;; @return The token name as a string.
 
       (function get-name
@@ -157,7 +158,7 @@
 
       ;; ----------------------------------------------------------------------
       ;; @notice Getter for the symbol of the token.
-      ;; @abi symbol() constant returns string
+      ;; @abi symbol() constant returns (string)
       ;; @return The token symbol as a string.
 
       (function get-symbol
@@ -165,7 +166,7 @@
 
       ;; ----------------------------------------------------------------------
       ;; @notice Getter for the number of decimals assigned to the token.
-      ;; @abi decimals() constant returns uint256
+      ;; @abi decimals() constant returns (uint256)
       ;; @return The token decimals.
 
       (function get-decimals
@@ -173,7 +174,7 @@
       
       ;; ----------------------------------------------------------------------
       ;; @notice Getter for the total token supply.
-      ;; @abi totalSupply() constant returns uint256
+      ;; @abi totalSupply() constant returns (uint256)
       ;; @return The token supply.
 
       (function get-total-supply
@@ -181,12 +182,12 @@
       
       ;; ----------------------------------------------------------------------
       ;; @notice Returns the account balance of another account.
-      ;; @abi balanceOf(address) constant returns uint256
+      ;; @abi balanceOf(address) constant returns (uint256)
       ;; @param owner The address of the account's owner.
       ;; @return The account balance.
 
       (function get-balance-of
-        (seq has-one-arg (is-address arg1)
+        (seq has-one-arg
 
           (def 'owner arg1)
 
@@ -196,7 +197,7 @@
       ;; @notice Transfers _value amount of tokens to address _to. The command
       ;;         should throw if the _from account balance has not enough
       ;;         tokens to spend.
-      ;; @abi transfer(address, uint256) returns bool
+      ;; @abi transfer(address, uint256) returns (bool)
       ;; @param to The account to receive the tokens.
       ;; @param value The quantity of tokens to transfer.
       ;; @return Success (true) or failure (false) of the transfer.
@@ -222,7 +223,7 @@
               (sstore (balance (caller)) (- (mload scratch0) value))
               (sstore (balance to) (+ (sload (balance to)) value))))
 
-          ;; Event Transfer(address,address,uint256)
+          ;; Event - Transfer(address,address,uint256)
           (mstore scratch0 'transfer-event-id)
           (log3 0x00 0x20 (caller) to value)
           
@@ -230,7 +231,7 @@
       
       ;; ----------------------------------------------------------------------
       ;; @notice Send _value amount of tokens from address _from to address _to
-      ;; @abi transferFrom(address,address,uint256) returns bool
+      ;; @abi transferFrom(address,address,uint256) returns (bool)
       ;; @param from The account to send the tokens from.
       ;; @param to The account to receive the tokens.
       ;; @param value The quantity of tokens to transfer.
@@ -263,47 +264,52 @@
               (sstore (balance to) (+ (sload (balance to)) value))
               (sstore (allowance from (caller)) (- (mload scratch1) value))))
 
-          ;; Event Transfer(address,address,uint256)
+          ;; Event - Transfer(address,address,uint256)
           (mstore scratch0 'transfer-event-id)
           (log3 0x00 0x20 from to value)
           
-          (return false)))
+          (return true)))
 
       ;; ----------------------------------------------------------------------
       ;; @notice Allows _spender to withdraw from your account multiple times,
       ;;         up to the _value amount. If this function is called again it
       ;;         overwrites the current allowance with _value.
-      ;; @abi approve(address,uint256) returns bool
+      ;; @abi approve(address,uint256) returns (bool)
       ;; @param spender The withdrawing account having its limit set.
       ;; @param value The maximum allowed amount.
       ;; @return Success (true) or failure (false) of the transfer.
 
-;;; TODO - To prevent attack vectors, make sure to force users set the allowance to 0 before setting it to another value for the same spender. See https://github.com/frozeman/EIPs/blob/2af51d6c80f3264199e3c77200928323ca231cf9/EIPS/eip-token-standard.md
-      
       (function approve
         (seq has-two-args (is-address arg1) (is-value arg2)
 
           (def 'spender arg1)
           (def 'value   arg2)
 
+          ;; Force users set the allowance to 0 before setting it to
+          ;; another value for the same spender. Prevents this attack:
+          ;; https://docs.google.com/document/d/1YLPtQxZu1UAvO9cZ1O2RPXBbT0mooh4DYKjA_jp-RLM
+          (when
+            (&& value (sload (allowance (caller) spender)))
+            revert)
+          
           (sstore (allowance (caller) spender) value)
 
-          ;; Event Approval(address,address,uint256)
+          ;; Event - Approval(address,address,uint256)
           (mstore scratch0 'approval-event-id)
           (log3 0x00 0x20 (caller) spender value)
           
-          (return false)))
+          (return true)))
       
       ;; ----------------------------------------------------------------------
       ;; @notice Returns the amount which _spender is still allowed to withdraw
       ;;         from _owner.
-      ;; @abi allowance(address,address) constant returns uint256
+      ;; @abi allowance(address,address) constant returns (uint256)
       ;; @param owner The owning account.
       ;; @param spender The withdrawing account.
       ;; @return The allowed amount remaining.
 
       (function get-allowance
-        (seq has-two-args (is-address arg1) (is-address arg2)
+        (seq has-two-args
 
           (def 'owner   arg1)
           (def 'spender arg2)
