@@ -4,16 +4,22 @@
 
 ;;; ---------------------------------------------------------------------------
 ;;;
-;;;  WORK IN PROGRESS - DO NOT DEPLOY!
+;;; WORK IN PROGRESS - DO NOT DEPLOY!
 ;;;
 ;;; ---------------------------------------------------------------------------
 
 (seq
 
+  ;; Temporary workaround until my PR ethereum/solidity/#2354 is merged.
+  ;; Allows the code to compile.
+  (def 'keccak256 (loc len) (asm len loc KECCAK256))
+  
   ;; --------------------------------------------------------------------------
   ;; CONSTANTS
 
   ;; Token parameters.
+  ;; @dev 0x00 storage for the strings is OK since they only appear in return
+  ;;      statements, so no problem with them overflowing into other memory.
   (def 'token-name-string   (lit 0x00 "Ben Token"))
   (def 'token-symbol-string (lit 0x00 "BEN"))
   (def 'token-decimals 2)
@@ -21,21 +27,14 @@
   
   ;; Booleans
   (def 'false 0)
-  (def 'true 1)
+  (def 'true  1)
 
   ;; Memory layout.
-  (def 'scratch0 0x00)
-  (def 'scratch1 0x20) 
-  
-  ;; Storage layout
-  ;; @notice Balances are stored at s[address].
-  (def 'balance (address) address)
-  ;; @notice Allowances are stored at s[owner + 2*spender + 1]
-  ;; @dev This is a bit tricky. The 2* is to break symmetry so that setting
-  ;;      allowance(a1,a2) doesn't also set allowance(a2,a1).
-  ;;      The +1 covers the case spender == 0 which could lead to issues
-  ;;      such as setting my balance to 0 by incorrectly calling approve().
-  (def 'allowance (owner spender) (+ 1 (+ owner (* 2 spender))))
+  (def 'mem-ret    0x00) ; Fixed due to compiler macro for return.
+  (def 'mem-func   0x00) ; No conflict with mem-ret, so re-use.
+  (def 'mem-keccak 0x00) ; No conflict with mem-func or mem-ret, so re-use.
+  (def 'scratch0   0x20) 
+  (def 'scratch1   0x40) 
   
   ;; Precomputed function IDs.
   (def 'get-name         0x06fdde03) ; name()
@@ -58,20 +57,51 @@
   ;; --------------------------------------------------------------------------
   ;; UTILITIES
 
-  ;; Function arguments
+  ;; --------------------------------------------------------------------------
+  ;; @notice The following define the key data-structures:
+  ;;         balance(addr) => value and allowance(addr,addr) => value
+
+  ;; @dev Balances are stored at s[owner_addr].
+  (def 'balance (address) address)
+
+  ;; @dev Allowances are stored at s[owner_addr + keccak256(spender_addr)]
+  ;; @dev We use a crypto function here to avoid any situation where
+  ;;      approve(me, spender) can be abused to do approve(target, me).
+  (def 'allowance (owner spender)
+    (seq
+      (mstore mem-keccak spender)
+      (keccak256 mem-keccak 0x20)))
+  
+  ;; --------------------------------------------------------------------------
+  ;; @dev For convenience we have macros to refer to function arguments
+
   (def 'arg1 (calldataload 0x04))
   (def 'arg2 (calldataload 0x24))
   (def 'arg3 (calldataload 0x44))
 
   ;; --------------------------------------------------------------------------
   ;; @notice Revert is a soft return that does not consume the remaining gas.
+  ;;         We use it when rejecting invalid user input.
+  ;; @dev The REVERT opcode will be implemented in Metropolis (EIP 140).
+  ;;      Meanwhile it just causes an invalid instruction exception (similar
+  ;;      to a "throw" in Solidity.
+  ;; @dev When fully implemented, Revert could be use to return error codes, or
+  ;;      even messages.
 
   (def 'revert (revert 0 0))
   
   ;; --------------------------------------------------------------------------
   ;; @notice For returning string names.
 
-  (def 'return-string (string-literal) (return 0x00 string-literal))
+  (def 'return-string (string-literal) (return mem-ret string-literal))
+
+  ;; --------------------------------------------------------------------------
+  ;; @notice Convenience macro for raising Events
+
+  (def 'event3 (id x y z)
+    (seq
+      (mstore scratch0 id)
+      (log3 scratch0 0x20 x y z)))
 
   ;; --------------------------------------------------------------------------
   ;; @notice Determines whether the stored function ID matches a known
@@ -80,7 +110,7 @@
   ;; @param code-body The code to run in the case of a match.
 
   (def 'function (function-hash code-body)
-    (when (= (mload scratch0) function-hash)
+    (when (= (mload mem-func) function-hash)
       code-body))
 
   ;; --------------------------------------------------------------------------
@@ -89,7 +119,7 @@
 
   (def 'uses-functions
     (mstore
-      scratch0
+      mem-func
       (div
         (calldataload 0x00)
         0x0000000100000000000000000000000000000000000000000000000000000000)))
@@ -138,7 +168,6 @@
   ;; INITIALISATION
   ;;
   ;; @notice Assign all tokens initially to the owner of the contract.
-  ;; @dev The location and length of the two string constants are stored.
   
   (sstore (balance (caller)) token-supply)
 
@@ -200,7 +229,7 @@
       ;; @abi transfer(address, uint256) returns (bool)
       ;; @param to The account to receive the tokens.
       ;; @param value The quantity of tokens to transfer.
-      ;; @return Success (true) or failure (false) of the transfer.
+      ;; @return Success (true). Other outcomes result in a Revert.
 
       (function transfer
         (seq has-two-args (is-address arg1) (is-value arg2)
@@ -224,8 +253,7 @@
               (sstore (balance to) (+ (sload (balance to)) value))))
 
           ;; Event - Transfer(address,address,uint256)
-          (mstore scratch0 'transfer-event-id)
-          (log3 0x00 0x20 (caller) to value)
+          (event3 transfer-event-id (caller) to value)
           
           (return true)))
       
@@ -235,7 +263,7 @@
       ;; @param from The account to send the tokens from.
       ;; @param to The account to receive the tokens.
       ;; @param value The quantity of tokens to transfer.
-      ;; @return Success (true) or failure (false) of the transfer.
+      ;; @return Success (true). Other outcomes result in a Revert.
 
       (function transfer-from
         (seq has-three-args (is-address arg1) (is-address arg2) (is-value arg3)
@@ -259,14 +287,13 @@
                   (> value (mload scratch1)))
                 revert)
 
-              ;; Make the transfer and update 
+              ;; Make the transfer and update allowance.
               (sstore (balance from) (- (mload scratch0) value))
               (sstore (balance to) (+ (sload (balance to)) value))
               (sstore (allowance from (caller)) (- (mload scratch1) value))))
 
           ;; Event - Transfer(address,address,uint256)
-          (mstore scratch0 'transfer-event-id)
-          (log3 0x00 0x20 from to value)
+          (event3 transfer-event-id from to value)
           
           (return true)))
 
@@ -277,7 +304,7 @@
       ;; @abi approve(address,uint256) returns (bool)
       ;; @param spender The withdrawing account having its limit set.
       ;; @param value The maximum allowed amount.
-      ;; @return Success (true) or failure (false) of the transfer.
+      ;; @return Success (true). Other outcomes result in a Revert.
 
       (function approve
         (seq has-two-args (is-address arg1) (is-value arg2)
@@ -295,8 +322,7 @@
           (sstore (allowance (caller) spender) value)
 
           ;; Event - Approval(address,address,uint256)
-          (mstore scratch0 'approval-event-id)
-          (log3 0x00 0x20 (caller) spender value)
+          (event3 approval-event-id (caller) spender value)
           
           (return true)))
       
