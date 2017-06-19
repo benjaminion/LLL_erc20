@@ -4,9 +4,9 @@ According to the [Homestead Documentation](http://www.ethdocs.org/en/latest/cont
 
 > Lisp Like Language (LLL) is a low level language similar to Assembly. It is meant to be very simple and minimalistic; essentially just a tiny wrapper over coding in EVM directly.
 
-LLL is one of the three living languages for Ethereum contract creation, alongside Solidity and Serpent (which itself compiles to LLL). If you have the Solidity compiler, then you have LLL! It's bundled with `solc` as `lllc`.
+LLL is one of the three living languages for Ethereum contract creation, alongside Solidity and Serpent (which itself compiles to LLL). If you have the Solidity compiler, then you likely have LLL! It's bundled with `solc` as `lllc`.
 
-It's fair to say that LLL is lagging far, far behind Solidity in popularity for contract creation. But, Daniel Ellison of Consensys is on a [crusade](https://media.consensys.net/@zigguratt) to revive it. [Here](http://blog.syrinx.net/the-resurrection-of-lll-part-1/) as well.
+It's fair to say that LLL is lagging far, far behind Solidity in popularity for contract creation. But, Daniel Ellison of Consensys is on a [mission](https://media.consensys.net/@zigguratt) to revive it. [Here](http://blog.syrinx.net/the-resurrection-of-lll-part-1/) as well.
 
 LLL is a low-level language, just one step above Ethereum Virtual Machine (EVM) bytecode.  Why would we choose to go back to the 1970s in programming terms when we have all the object-oriented joys of Solidity at our disposal?
 
@@ -20,4 +20,4 @@ Of course, there are downsides. High-level languages exist for a reason. But it'
 
 A fully functional (but as yet not fully tested) implementation of the [ERC20 token standard](https://theethereum.wiki/w/index.php/ERC20_Token_Standard).
 
-I know it looks a bit long-winded, but of the (original) 349 lines, 84 are blank, 138 are comment, and only 127 are actual code. These Lisp-like languages lend themselves to sparse layout and lots of whitespace. I like this.  It is possible to write LLL code [much more compactly](https://github.com/ethereum/cpp-ethereum/wiki/LLL-Examples-for-PoC-5/04fae9e627ac84d771faddcf60098ad09230ab58), but I find that style quite impenetrable, and there's really no efficiency advantage. And, actually, quite a lot of the preamble is re-usable and could be moved to an include file (yes, LLL has a mechanism for this).
+I know it looks a bit long-winded, but of the (original) 349 lines, 84 are blank, 138 are comment, and only 127 are actual code. These Lisp-like languages lend themselves to sparse layout and lots of whitespace. I like this.  It is possible to write LLL code [much more compactly](https://github.com/ethereum/cpp-ethereum/wiki/LLL-Examples-for-PoC-5/04fae9e627ac84d771faddcf60098ad09230ab58), but I find that style quite impenetrable, and there's really no efficiency advantage. Actually, quite a lot of the preamble is re-usable and could be moved to an include file (yes, LLL has a mechanism for this).
