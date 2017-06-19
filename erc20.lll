@@ -18,10 +18,10 @@
   ;; CONSTANTS
 
   ;; Token parameters.
-  ;; @dev 0x00 storage for the strings is OK since they only appear in return
-  ;;      statements, so no problem with them overflowing into other memory.
-  (def 'token-name-string   (lit 0x00 "Ben Token"))
-  (def 'token-symbol-string (lit 0x00 "BEN"))
+  ;; @dev 0x40 is a "magic number" - the text of the string is placed here
+  ;;      when returning the string to the caller. See return-string below.
+  (def 'token-name-string   (lit 0x40 "Ben Token"))
+  (def 'token-symbol-string (lit 0x40 "BEN"))
   (def 'token-decimals 2)
   (def 'token-supply 100000) ; 1000.00 total tokens
   
@@ -92,8 +92,13 @@
   
   ;; --------------------------------------------------------------------------
   ;; @notice For returning string names.
+  ;; @dev Compliant with the ABI format for strings.
 
-  (def 'return-string (string-literal) (return mem-ret string-literal))
+  (def 'return-string (string-literal)
+    (seq
+      (mstore 0x00 0x20)           ; Points to our string's memory location
+      (mstore 0x20 string-literal) ; Length. String itself is copied to 0x40.
+      (return mem-ret (+ 0x40 (mload 0x20)))))
 
   ;; --------------------------------------------------------------------------
   ;; @notice Convenience macro for raising Events
