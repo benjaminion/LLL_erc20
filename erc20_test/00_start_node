@@ -1,0 +1,4 @@
+#!/bin/bash
+
+/opt/node/lib/node_modules/ethereumjs-testrpc/bin/testrpc -d
+
