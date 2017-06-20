@@ -103,10 +103,10 @@
   ;; --------------------------------------------------------------------------
   ;; @notice Convenience macro for raising Events
 
-  (def 'event3 (id x y z)
+  (def 'event3 (id addr1 addr2 value)
     (seq
-      (mstore scratch0 id)
-      (log3 scratch0 0x20 x y z)))
+      (mstore scratch0 value)
+      (log3 scratch0 0x20 id addr1 addr2)))
 
   ;; --------------------------------------------------------------------------
   ;; @notice Determines whether the stored function ID matches a known
@@ -255,10 +255,10 @@
               ;; Make the transfer
               ;; It would be good to check invariants (sum of balances).
               (sstore (balance (caller)) (- (mload scratch0) value))
-              (sstore (balance to) (+ (sload (balance to)) value))))
+              (sstore (balance to) (+ (sload (balance to)) value))
 
-          ;; Event - Transfer(address,address,uint256)
-          (event3 transfer-event-id (caller) to value)
+              ;; Event - Transfer(address,address,uint256)
+              (event3 transfer-event-id (caller) to value)))
           
           (return true)))
       
@@ -295,10 +295,10 @@
               ;; Make the transfer and update allowance.
               (sstore (balance from) (- (mload scratch0) value))
               (sstore (balance to) (+ (sload (balance to)) value))
-              (sstore (allowance from (caller)) (- (mload scratch1) value))))
+              (sstore (allowance from (caller)) (- (mload scratch1) value))
 
-          ;; Event - Transfer(address,address,uint256)
-          (event3 transfer-event-id from to value)
+              ;; Event - Transfer(address,address,uint256)
+              (event3 transfer-event-id from to value)))
           
           (return true)))
 
