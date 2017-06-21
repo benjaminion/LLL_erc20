@@ -2,18 +2,10 @@
 ;;; @title Implementation of an ERC20 Token contract in LLL
 ;;; @author Ben Edgington
 
-;;; ---------------------------------------------------------------------------
-;;;
-;;; WORK IN PROGRESS - DO NOT DEPLOY!
-;;;
-;;; ---------------------------------------------------------------------------
+;;; @dev Requires the "develop" branch of the ethereum/solidity to compile.
 
 (seq
 
-  ;; Temporary workaround until my PR ethereum/solidity/#2354 is merged.
-  ;; Allows the code to compile.
-  (def 'keccak256 (loc len) (asm len loc KECCAK256))
-  
   ;; --------------------------------------------------------------------------
   ;; CONSTANTS
 
@@ -84,7 +76,7 @@
   ;;         We use it when rejecting invalid user input.
   ;; @dev The REVERT opcode will be implemented in Metropolis (EIP 140).
   ;;      Meanwhile it just causes an invalid instruction exception (similar
-  ;;      to a "throw" in Solidity.
+  ;;      to a "throw" in Solidity).
   ;; @dev When fully implemented, Revert could be use to return error codes, or
   ;;      even messages.
 
@@ -125,9 +117,7 @@
   (def 'uses-functions
     (mstore
       mem-func
-      (div
-        (calldataload 0x00)
-        0x0000000100000000000000000000000000000000000000000000000000000000)))
+      (div (calldataload 0x00) (shl 1 224))))
 
   ;; --------------------------------------------------------------------------
   ;; GUARDS
@@ -137,6 +127,7 @@
   ;;         number of arguments. For one thing this addresses the "ERC20
   ;;         short address attack". For another, it stops me making
   ;;         mistakes while testing.
+  ;; @dev We use these only on the non-constant functions.
 
   (def 'has-one-arg    (unless (= 0x24 (calldatasize)) revert))
   (def 'has-two-args   (unless (= 0x44 (calldatasize)) revert))
@@ -148,9 +139,7 @@
 
   (def 'is-address (addr)
     (when
-      (div
-        addr
-        0x0000000000000000000000010000000000000000000000000000000000000000)
+      (div addr (shl 1 160))
       revert))
 
   ;; --------------------------------------------------------------------------
@@ -221,7 +210,7 @@
       ;; @return The account balance.
 
       (function get-balance-of
-        (seq has-one-arg
+        (seq
 
           (def 'owner arg1)
 
@@ -340,7 +329,7 @@
       ;; @return The allowed amount remaining.
 
       (function get-allowance
-        (seq has-two-args
+        (seq
 
           (def 'owner   arg1)
           (def 'spender arg2)
