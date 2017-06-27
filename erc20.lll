@@ -117,7 +117,7 @@
   (def 'uses-functions
     (mstore
       mem-func
-      (div (calldataload 0x00) (shl 1 224))))
+      (shr (calldataload 0x00) 224)))
 
   ;; --------------------------------------------------------------------------
   ;; GUARDS
@@ -136,10 +136,14 @@
   ;; --------------------------------------------------------------------------
   ;; @notice Check that addresses have only 160 bits and revert if not.
   ;; @dev We use these input type-checks on the non-constant functions.
+  ;; @dev This is kind of expensive for now since it uses exp behind the
+  ;;      scenes until shr is implemented as an EVM opcode. The optimiser
+  ;;      is supposed to manage constant expressions, but it doesn't here
+  ;;      for some reason.
 
   (def 'is-address (addr)
     (when
-      (div addr (shl 1 160))
+      (shr addr 160)
       revert))
 
   ;; --------------------------------------------------------------------------
@@ -185,7 +189,7 @@
       ;; @return The token symbol as a string.
 
       (function get-symbol
-	(return-string token-symbol-string))
+        (return-string token-symbol-string))
 
       ;; ----------------------------------------------------------------------
       ;; @notice Getter for the number of decimals assigned to the token.
