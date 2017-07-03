@@ -80,7 +80,7 @@
   ;; @dev When fully implemented, Revert could be use to return error codes, or
   ;;      even messages.
 
-  (def 'revert (revert 0 0))
+  (def 'revert () (revert 0 0))
   
   ;; --------------------------------------------------------------------------
   ;; @notice For returning string names.
@@ -129,9 +129,9 @@
   ;;         mistakes while testing.
   ;; @dev We use these only on the non-constant functions.
 
-  (def 'has-one-arg    (unless (= 0x24 (calldatasize)) revert))
-  (def 'has-two-args   (unless (= 0x44 (calldatasize)) revert))
-  (def 'has-three-args (unless (= 0x64 (calldatasize)) revert))
+  (def 'has-one-arg    (unless (= 0x24 (calldatasize)) (revert)))
+  (def 'has-two-args   (unless (= 0x44 (calldatasize)) (revert)))
+  (def 'has-three-args (unless (= 0x64 (calldatasize)) (revert)))
   
   ;; --------------------------------------------------------------------------
   ;; @notice Check that addresses have only 160 bits and revert if not.
@@ -144,21 +144,21 @@
   (def 'is-address (addr)
     (when
       (shr addr 160)
-      revert))
+      (revert)))
 
   ;; --------------------------------------------------------------------------
   ;; @notice Check that transfer values are smaller than total supply and
   ;;         revert if not. This should effectively exclude negative values.
 
   (def 'is-value (value)
-    (when (> value token-supply) revert))
+    (when (> value token-supply) (revert)))
 
   ;; --------------------------------------------------------------------------
   ;; @notice Will revert if sent any Ether. We use the macro immediately so as
   ;;         to abort if sent any Ether during contract deployment.
 
   (def 'not-payable
-    (when (callvalue) revert))
+    (when (callvalue) (revert)))
 
   not-payable
   
@@ -181,7 +181,7 @@
       ;; @return The token name as a string.
 
       (function get-name
-	(return-string token-name-string))
+        (return-string token-name-string))
 
       ;; ----------------------------------------------------------------------
       ;; @notice Getter for the symbol of the token.
@@ -243,7 +243,7 @@
 
               ;; Revert if the caller's balance is not sufficient.
               (when (> value (mload scratch0))
-                revert)
+                (revert))
 
               ;; Make the transfer
               ;; It would be good to check invariants (sum of balances).
@@ -283,7 +283,7 @@
                 (||
                   (> value (mload scratch0))
                   (> value (mload scratch1)))
-                revert)
+                (revert))
 
               ;; Make the transfer and update allowance.
               (sstore (balance from) (- (mload scratch0) value))
@@ -315,7 +315,7 @@
           ;; https://docs.google.com/document/d/1YLPtQxZu1UAvO9cZ1O2RPXBbT0mooh4DYKjA_jp-RLM
           (when
             (&& value (sload (allowance (caller) spender)))
-            revert)
+            (revert))
           
           (sstore (allowance (caller) spender) value)
 
@@ -343,5 +343,5 @@
       ;; ----------------------------------------------------------------------
       ;; @notice Fallback: No functions matched the function ID provided.
 
-      revert))
+      (revert)))
   )
