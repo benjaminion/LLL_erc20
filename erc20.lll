@@ -90,7 +90,7 @@
     (seq
       (mstore 0x00 0x20)           ; Points to our string's memory location
       (mstore 0x20 string-literal) ; Length. String itself is copied to 0x40.
-      (return mem-ret (+ 0x40 (mload 0x20)))))
+      (return 0x00 (+ 0x40 (mload 0x20)))))
 
   ;; --------------------------------------------------------------------------
   ;; @notice Convenience macro for raising Events
