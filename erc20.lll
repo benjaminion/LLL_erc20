@@ -1,8 +1,8 @@
 ;;; ---------------------------------------------------------------------------
-;;; @title Implementation of an ERC20 Token contract in LLL
-;;; @author Ben Edgington
-
-;;; @dev Requires the "develop" branch of the ethereum/solidity to compile.
+;;; Implementation of an ERC20 Token contract in LLL
+;;;
+;;; Ben Edgington - ben@benjaminion.xyz
+;;;
 
 (seq
 
@@ -10,8 +10,8 @@
   ;; CONSTANTS
 
   ;; Token parameters.
-  ;; @dev 0x40 is a "magic number" - the text of the string is placed here
-  ;;      when returning the string to the caller. See return-string below.
+  ;;   0x40 is a "magic number" - the text of the string is placed here
+  ;;   when returning the string to the caller. See return-string below.
   (def 'token-name-string   (lit 0x40 "Ben Token"))
   (def 'token-symbol-string (lit 0x40 "BEN"))
   (def 'token-decimals 2)
@@ -50,41 +50,42 @@
   ;; UTILITIES
 
   ;; --------------------------------------------------------------------------
-  ;; @notice The following define the key data-structures:
-  ;;         balance(addr) => value and allowance(addr,addr) => value
+  ;;  The following define the key data-structures:
+  ;;    - balance(addr) => value
+  ;;    - allowance(addr,addr) => value
 
-  ;; @dev Balances are stored at s[owner_addr].
+  ;; Balances are stored at s[owner_addr].
   (def 'balance (address) address)
 
-  ;; @dev Allowances are stored at s[owner_addr + keccak256(spender_addr)]
-  ;; @dev We use a crypto function here to avoid any situation where
-  ;;      approve(me, spender) can be abused to do approve(target, me).
+  ;; Allowances are stored at s[owner_addr + keccak256(spender_addr)]
+  ;;   We use a crypto function here to avoid any situation where
+  ;;   approve(me, spender) can be abused to do approve(target, me).
   (def 'allowance (owner spender)
     (seq
       (mstore mem-keccak spender)
       (keccak256 mem-keccak 0x20)))
   
   ;; --------------------------------------------------------------------------
-  ;; @dev For convenience we have macros to refer to function arguments
+  ;; For convenience we have macros to refer to function arguments
 
   (def 'arg1 (calldataload 0x04))
   (def 'arg2 (calldataload 0x24))
   (def 'arg3 (calldataload 0x44))
 
   ;; --------------------------------------------------------------------------
-  ;; @notice Revert is a soft return that does not consume the remaining gas.
-  ;;         We use it when rejecting invalid user input.
-  ;; @dev The REVERT opcode will be implemented in Metropolis (EIP 140).
-  ;;      Meanwhile it just causes an invalid instruction exception (similar
-  ;;      to a "throw" in Solidity).
-  ;; @dev When fully implemented, Revert could be use to return error codes, or
-  ;;      even messages.
+  ;; Revert is a soft return that does not consume the remaining gas.
+  ;;   We use it when rejecting invalid user input.
+  ;;
+  ;; Note: The REVERT opcode will be implemented in Metropolis (EIP 140).
+  ;;   Meanwhile it just causes an invalid instruction exception (similar
+  ;;   to a "throw" in Solidity).  When fully implemented, Revert could be
+  ;;   use to return error codes, or even messages.
 
   (def 'revert () (revert 0 0))
   
   ;; --------------------------------------------------------------------------
-  ;; @notice For returning string names.
-  ;; @dev Compliant with the ABI format for strings.
+  ;; Macro for returning string names.
+  ;;   Compliant with the ABI format for strings.
 
   (def 'return-string (string-literal)
     (seq
@@ -93,7 +94,7 @@
       (return 0x00 (+ 0x40 (mload 0x20)))))
 
   ;; --------------------------------------------------------------------------
-  ;; @notice Convenience macro for raising Events
+  ;; Convenience macro for raising Events
 
   (def 'event3 (id addr1 addr2 value)
     (seq
@@ -101,8 +102,8 @@
       (log3 scratch0 0x20 id addr1 addr2)))
 
   ;; --------------------------------------------------------------------------
-  ;; @notice Determines whether the stored function ID matches a known
-  ;;         function hash and executes <code-body> if so.
+  ;; Determines whether the stored function ID matches a known
+  ;;   function hash and executes <code-body> if so.
   ;; @param function-hash The four-byte hash of a known function signature.
   ;; @param code-body The code to run in the case of a match.
 
@@ -111,8 +112,8 @@
       code-body))
 
   ;; --------------------------------------------------------------------------
-  ;; @notice Gets the function ID and stores it in memory for reference.
-  ;; @dev The function ID is in the leftmost four bytes of the call data.
+  ;; Gets the function ID and stores it in memory for reference.
+  ;;   The function ID is in the leftmost four bytes of the call data.
 
   (def 'uses-functions
     (mstore
@@ -123,23 +124,18 @@
   ;; GUARDS
 
   ;; --------------------------------------------------------------------------
-  ;; @notice Checks that ensure that each function is called with the right
-  ;;         number of arguments. For one thing this addresses the "ERC20
-  ;;         short address attack". For another, it stops me making
-  ;;         mistakes while testing.
-  ;; @dev We use these only on the non-constant functions.
+  ;; Checks that ensure that each function is called with the right
+  ;;   number of arguments. For one thing this addresses the "ERC20
+  ;;   short address attack". For another, it stops me making
+  ;;   mistakes while testing. We use these only on the non-constant functions.
 
   (def 'has-one-arg    (unless (= 0x24 (calldatasize)) (revert)))
   (def 'has-two-args   (unless (= 0x44 (calldatasize)) (revert)))
   (def 'has-three-args (unless (= 0x64 (calldatasize)) (revert)))
   
   ;; --------------------------------------------------------------------------
-  ;; @notice Check that addresses have only 160 bits and revert if not.
-  ;; @dev We use these input type-checks on the non-constant functions.
-  ;; @dev This is kind of expensive for now since it uses exp behind the
-  ;;      scenes until shr is implemented as an EVM opcode. The optimiser
-  ;;      is supposed to manage constant expressions, but it doesn't here
-  ;;      for some reason.
+  ;; Check that addresses have only 160 bits and revert if not.
+  ;;   We use these input type-checks on the non-constant functions.
 
   (def 'is-address (addr)
     (when
@@ -147,15 +143,15 @@
       (revert)))
 
   ;; --------------------------------------------------------------------------
-  ;; @notice Check that transfer values are smaller than total supply and
-  ;;         revert if not. This should effectively exclude negative values.
+  ;; Check that transfer values are smaller than total supply and
+  ;;   revert if not. This should effectively exclude negative values.
 
   (def 'is-value (value)
     (when (> value token-supply) (revert)))
 
   ;; --------------------------------------------------------------------------
-  ;; @notice Will revert if sent any Ether. We use the macro immediately so as
-  ;;         to abort if sent any Ether during contract deployment.
+  ;; Will revert if sent any Ether. We use the macro immediately so as
+  ;;   to abort if sent any Ether during contract deployment.
 
   (def 'not-payable
     (when (callvalue) (revert)))
@@ -165,7 +161,7 @@
   ;; --------------------------------------------------------------------------
   ;; INITIALISATION
   ;;
-  ;; @notice Assign all tokens initially to the owner of the contract.
+  ;; Assign all tokens initially to the owner of the contract.
   
   (sstore (balance (caller)) token-supply)
 
@@ -176,7 +172,7 @@
     (seq not-payable uses-functions
       
       ;; ----------------------------------------------------------------------
-      ;; @notice Getter for the name of the token.
+      ;; Getter for the name of the token.
       ;; @abi name() constant returns (string)
       ;; @return The token name as a string.
 
@@ -184,7 +180,7 @@
         (return-string token-name-string))
 
       ;; ----------------------------------------------------------------------
-      ;; @notice Getter for the symbol of the token.
+      ;; Getter for the symbol of the token.
       ;; @abi symbol() constant returns (string)
       ;; @return The token symbol as a string.
 
@@ -192,7 +188,7 @@
         (return-string token-symbol-string))
 
       ;; ----------------------------------------------------------------------
-      ;; @notice Getter for the number of decimals assigned to the token.
+      ;; Getter for the number of decimals assigned to the token.
       ;; @abi decimals() constant returns (uint256)
       ;; @return The token decimals.
 
@@ -200,7 +196,7 @@
         (return token-decimals))
       
       ;; ----------------------------------------------------------------------
-      ;; @notice Getter for the total token supply.
+      ;; Getter for the total token supply.
       ;; @abi totalSupply() constant returns (uint256)
       ;; @return The token supply.
 
@@ -208,7 +204,7 @@
         (return token-supply))
       
       ;; ----------------------------------------------------------------------
-      ;; @notice Returns the account balance of another account.
+      ;; Returns the account balance of another account.
       ;; @abi balanceOf(address) constant returns (uint256)
       ;; @param owner The address of the account's owner.
       ;; @return The account balance.
@@ -221,9 +217,9 @@
           (return (sload (balance owner)))))
       
       ;; ----------------------------------------------------------------------
-      ;; @notice Transfers _value amount of tokens to address _to. The command
-      ;;         should throw if the _from account balance has not enough
-      ;;         tokens to spend.
+      ;; Transfers _value amount of tokens to address _to. The command
+      ;;   should throw if the _from account balance has not enough
+      ;;   tokens to spend.
       ;; @abi transfer(address, uint256) returns (bool)
       ;; @param to The account to receive the tokens.
       ;; @param value The quantity of tokens to transfer.
@@ -256,7 +252,7 @@
           (return true)))
       
       ;; ----------------------------------------------------------------------
-      ;; @notice Send _value amount of tokens from address _from to address _to
+      ;; Send _value amount of tokens from address _from to address _to
       ;; @abi transferFrom(address,address,uint256) returns (bool)
       ;; @param from The account to send the tokens from.
       ;; @param to The account to receive the tokens.
@@ -296,9 +292,9 @@
           (return true)))
 
       ;; ----------------------------------------------------------------------
-      ;; @notice Allows _spender to withdraw from your account multiple times,
-      ;;         up to the _value amount. If this function is called again it
-      ;;         overwrites the current allowance with _value.
+      ;; Allows _spender to withdraw from your account multiple times,
+      ;;   up to the _value amount. If this function is called again it
+      ;;   overwrites the current allowance with _value.
       ;; @abi approve(address,uint256) returns (bool)
       ;; @param spender The withdrawing account having its limit set.
       ;; @param value The maximum allowed amount.
@@ -325,8 +321,8 @@
           (return true)))
       
       ;; ----------------------------------------------------------------------
-      ;; @notice Returns the amount which _spender is still allowed to withdraw
-      ;;         from _owner.
+      ;; Returns the amount which _spender is still allowed to withdraw
+      ;;   from _owner.
       ;; @abi allowance(address,address) constant returns (uint256)
       ;; @param owner The owning account.
       ;; @param spender The withdrawing account.
@@ -341,7 +337,7 @@
           (return (sload (allowance owner spender)))))
       
       ;; ----------------------------------------------------------------------
-      ;; @notice Fallback: No functions matched the function ID provided.
+      ;; Fallback: No functions matched the function ID provided.
 
       (revert)))
   )
