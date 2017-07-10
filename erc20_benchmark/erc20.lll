@@ -1,0 +1,347 @@
+;;; ---------------------------------------------------------------------------
+;;; @title Implementation of an ERC20 Token contract in LLL
+;;; @author Ben Edgington
+
+;;; @dev Requires the "develop" branch of the ethereum/solidity to compile.
+
+(seq
+
+  ;; --------------------------------------------------------------------------
+  ;; CONSTANTS
+
+  ;; Token parameters.
+  ;; @dev 0x40 is a "magic number" - the text of the string is placed here
+  ;;      when returning the string to the caller. See return-string below.
+  (def 'token-name-string   (lit 0x40 "Ben Token"))
+  (def 'token-symbol-string (lit 0x40 "BEN"))
+  (def 'token-decimals 2)
+  (def 'token-supply 100000) ; 1000.00 total tokens
+  
+  ;; Booleans
+  (def 'false 0)
+  (def 'true  1)
+
+  ;; Memory layout.
+  (def 'mem-ret    0x00) ; Fixed due to compiler macro for return.
+  (def 'mem-func   0x00) ; No conflict with mem-ret, so re-use.
+  (def 'mem-keccak 0x00) ; No conflict with mem-func or mem-ret, so re-use.
+  (def 'scratch0   0x20) 
+  (def 'scratch1   0x40) 
+  
+  ;; Precomputed function IDs.
+  (def 'get-name         0x06fdde03) ; name()
+  (def 'get-symbol       0x95d89b41) ; symbol()
+  (def 'get-decimals     0x313ce567) ; decimals()
+  (def 'get-total-supply 0x18160ddd) ; totalSupply()
+  (def 'get-balance-of   0x70a08231) ; balanceOf(address)
+  (def 'transfer         0xa9059cbb) ; transfer(address,uint256)
+  (def 'transfer-from    0x23b872dd) ; transferFrom(address,address,uint256)
+  (def 'approve          0x095ea7b3) ; approve(address,uint256)
+  (def 'get-allowance    0xdd62ed3e) ; allowance(address,address)
+
+  ;; Event IDs
+  (def 'transfer-event-id ; Transfer(address,address,uint256)
+    0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef)
+  
+  (def 'approval-event-id ; Approval(address,address,uint256)
+    0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925)
+  
+  ;; --------------------------------------------------------------------------
+  ;; UTILITIES
+
+  ;; --------------------------------------------------------------------------
+  ;; @notice The following define the key data-structures:
+  ;;         balance(addr) => value and allowance(addr,addr) => value
+
+  ;; @dev Balances are stored at s[owner_addr].
+  (def 'balance (address) address)
+
+  ;; @dev Allowances are stored at s[owner_addr + keccak256(spender_addr)]
+  ;; @dev We use a crypto function here to avoid any situation where
+  ;;      approve(me, spender) can be abused to do approve(target, me).
+  (def 'allowance (owner spender)
+    (seq
+      (mstore mem-keccak spender)
+      (keccak256 mem-keccak 0x20)))
+  
+  ;; --------------------------------------------------------------------------
+  ;; @dev For convenience we have macros to refer to function arguments
+
+  (def 'arg1 (calldataload 0x04))
+  (def 'arg2 (calldataload 0x24))
+  (def 'arg3 (calldataload 0x44))
+
+  ;; --------------------------------------------------------------------------
+  ;; @notice Revert is a soft return that does not consume the remaining gas.
+  ;;         We use it when rejecting invalid user input.
+  ;; @dev The REVERT opcode will be implemented in Metropolis (EIP 140).
+  ;;      Meanwhile it just causes an invalid instruction exception (similar
+  ;;      to a "throw" in Solidity).
+  ;; @dev When fully implemented, Revert could be use to return error codes, or
+  ;;      even messages.
+
+  (def 'revert () (revert 0 0))
+  
+  ;; --------------------------------------------------------------------------
+  ;; @notice For returning string names.
+  ;; @dev Compliant with the ABI format for strings.
+
+  (def 'return-string (string-literal)
+    (seq
+      (mstore 0x00 0x20)           ; Points to our string's memory location
+      (mstore 0x20 string-literal) ; Length. String itself is copied to 0x40.
+      (return 0x00 (+ 0x40 (mload 0x20)))))
+
+  ;; --------------------------------------------------------------------------
+  ;; @notice Convenience macro for raising Events
+
+  (def 'event3 (id addr1 addr2 value)
+    (seq
+      (mstore scratch0 value)
+      (log3 scratch0 0x20 id addr1 addr2)))
+
+  ;; --------------------------------------------------------------------------
+  ;; @notice Determines whether the stored function ID matches a known
+  ;;         function hash and executes <code-body> if so.
+  ;; @param function-hash The four-byte hash of a known function signature.
+  ;; @param code-body The code to run in the case of a match.
+
+  (def 'function (function-hash code-body)
+    (when (= (mload mem-func) function-hash)
+      code-body))
+
+  ;; --------------------------------------------------------------------------
+  ;; @notice Gets the function ID and stores it in memory for reference.
+  ;; @dev The function ID is in the leftmost four bytes of the call data.
+
+  (def 'uses-functions
+    (mstore
+      mem-func
+      (shr (calldataload 0x00) 224)))
+
+  ;; --------------------------------------------------------------------------
+  ;; GUARDS
+
+  ;; --------------------------------------------------------------------------
+  ;; @notice Checks that ensure that each function is called with the right
+  ;;         number of arguments. For one thing this addresses the "ERC20
+  ;;         short address attack". For another, it stops me making
+  ;;         mistakes while testing.
+  ;; @dev We use these only on the non-constant functions.
+
+  (def 'has-one-arg    (unless (= 0x24 (calldatasize)) (revert)))
+  (def 'has-two-args   (unless (= 0x44 (calldatasize)) (revert)))
+  (def 'has-three-args (unless (= 0x64 (calldatasize)) (revert)))
+  
+  ;; --------------------------------------------------------------------------
+  ;; @notice Check that addresses have only 160 bits and revert if not.
+  ;; @dev We use these input type-checks on the non-constant functions.
+  ;; @dev This is kind of expensive for now since it uses exp behind the
+  ;;      scenes until shr is implemented as an EVM opcode. The optimiser
+  ;;      is supposed to manage constant expressions, but it doesn't here
+  ;;      for some reason.
+
+  (def 'is-address (addr)
+    (when
+      (shr addr 160)
+      (revert)))
+
+  ;; --------------------------------------------------------------------------
+  ;; @notice Check that transfer values are smaller than total supply and
+  ;;         revert if not. This should effectively exclude negative values.
+
+  (def 'is-value (value)
+    (when (> value token-supply) (revert)))
+
+  ;; --------------------------------------------------------------------------
+  ;; @notice Will revert if sent any Ether. We use the macro immediately so as
+  ;;         to abort if sent any Ether during contract deployment.
+
+  (def 'not-payable
+    (when (callvalue) (revert)))
+
+  not-payable
+  
+  ;; --------------------------------------------------------------------------
+  ;; INITIALISATION
+  ;;
+  ;; @notice Assign all tokens initially to the owner of the contract.
+  
+  (sstore (balance (caller)) token-supply)
+
+  ;; --------------------------------------------------------------------------
+  ;; CONTRACT CODE
+  
+  (returnlll
+    (seq not-payable uses-functions
+      
+      ;; ----------------------------------------------------------------------
+      ;; @notice Getter for the name of the token.
+      ;; @abi name() constant returns (string)
+      ;; @return The token name as a string.
+
+      (function get-name
+        (return-string token-name-string))
+
+      ;; ----------------------------------------------------------------------
+      ;; @notice Getter for the symbol of the token.
+      ;; @abi symbol() constant returns (string)
+      ;; @return The token symbol as a string.
+
+      (function get-symbol
+        (return-string token-symbol-string))
+
+      ;; ----------------------------------------------------------------------
+      ;; @notice Getter for the number of decimals assigned to the token.
+      ;; @abi decimals() constant returns (uint256)
+      ;; @return The token decimals.
+
+      (function get-decimals
+        (return token-decimals))
+      
+      ;; ----------------------------------------------------------------------
+      ;; @notice Getter for the total token supply.
+      ;; @abi totalSupply() constant returns (uint256)
+      ;; @return The token supply.
+
+      (function get-total-supply
+        (return token-supply))
+      
+      ;; ----------------------------------------------------------------------
+      ;; @notice Returns the account balance of another account.
+      ;; @abi balanceOf(address) constant returns (uint256)
+      ;; @param owner The address of the account's owner.
+      ;; @return The account balance.
+
+      (function get-balance-of
+        (seq
+
+          (def 'owner arg1)
+
+          (return (sload (balance owner)))))
+      
+      ;; ----------------------------------------------------------------------
+      ;; @notice Transfers _value amount of tokens to address _to. The command
+      ;;         should throw if the _from account balance has not enough
+      ;;         tokens to spend.
+      ;; @abi transfer(address, uint256) returns (bool)
+      ;; @param to The account to receive the tokens.
+      ;; @param value The quantity of tokens to transfer.
+      ;; @return Success (true). Other outcomes result in a Revert.
+
+      (function transfer
+        (seq has-two-args (is-address arg1) (is-value arg2)
+
+          (def 'to    arg1)
+          (def 'value arg2)
+          
+          (when value ; value == 0 is a no-op
+            (seq
+            
+              ;; The caller's balance. Save in memory for efficiency.
+              (mstore scratch0 (sload (balance (caller))))
+
+              ;; Revert if the caller's balance is not sufficient.
+              (when (> value (mload scratch0))
+                (revert))
+
+              ;; Make the transfer
+              ;; It would be good to check invariants (sum of balances).
+              (sstore (balance (caller)) (- (mload scratch0) value))
+              (sstore (balance to) (+ (sload (balance to)) value))
+
+              ;; Event - Transfer(address,address,uint256)
+              (event3 transfer-event-id (caller) to value)))
+          
+          (return true)))
+      
+      ;; ----------------------------------------------------------------------
+      ;; @notice Send _value amount of tokens from address _from to address _to
+      ;; @abi transferFrom(address,address,uint256) returns (bool)
+      ;; @param from The account to send the tokens from.
+      ;; @param to The account to receive the tokens.
+      ;; @param value The quantity of tokens to transfer.
+      ;; @return Success (true). Other outcomes result in a Revert.
+
+      (function transfer-from
+        (seq has-three-args (is-address arg1) (is-address arg2) (is-value arg3)
+
+          (def 'from  arg1)
+          (def 'to    arg2)
+          (def 'value arg3)
+
+          (when value ; value == 0 is a no-op
+
+            (seq
+              
+              ;; Save data to memory for efficiency.
+              (mstore scratch0 (sload (balance from)))
+              (mstore scratch1 (sload (allowance from (caller))))
+
+              ;; Revert if not enough funds, or not enough approved.
+              (when
+                (||
+                  (> value (mload scratch0))
+                  (> value (mload scratch1)))
+                (revert))
+
+              ;; Make the transfer and update allowance.
+              (sstore (balance from) (- (mload scratch0) value))
+              (sstore (balance to) (+ (sload (balance to)) value))
+              (sstore (allowance from (caller)) (- (mload scratch1) value))
+
+              ;; Event - Transfer(address,address,uint256)
+              (event3 transfer-event-id from to value)))
+          
+          (return true)))
+
+      ;; ----------------------------------------------------------------------
+      ;; @notice Allows _spender to withdraw from your account multiple times,
+      ;;         up to the _value amount. If this function is called again it
+      ;;         overwrites the current allowance with _value.
+      ;; @abi approve(address,uint256) returns (bool)
+      ;; @param spender The withdrawing account having its limit set.
+      ;; @param value The maximum allowed amount.
+      ;; @return Success (true). Other outcomes result in a Revert.
+
+      (function approve
+        (seq has-two-args (is-address arg1) (is-value arg2)
+
+          (def 'spender arg1)
+          (def 'value   arg2)
+
+          ;; Force users set the allowance to 0 before setting it to
+          ;; another value for the same spender. Prevents this attack:
+          ;; https://docs.google.com/document/d/1YLPtQxZu1UAvO9cZ1O2RPXBbT0mooh4DYKjA_jp-RLM
+          (when
+            (&& value (sload (allowance (caller) spender)))
+            (revert))
+          
+          (sstore (allowance (caller) spender) value)
+
+          ;; Event - Approval(address,address,uint256)
+          (event3 approval-event-id (caller) spender value)
+          
+          (return true)))
+      
+      ;; ----------------------------------------------------------------------
+      ;; @notice Returns the amount which _spender is still allowed to withdraw
+      ;;         from _owner.
+      ;; @abi allowance(address,address) constant returns (uint256)
+      ;; @param owner The owning account.
+      ;; @param spender The withdrawing account.
+      ;; @return The allowed amount remaining.
+
+      (function get-allowance
+        (seq
+
+          (def 'owner   arg1)
+          (def 'spender arg2)
+          
+          (return (sload (allowance owner spender)))))
+      
+      ;; ----------------------------------------------------------------------
+      ;; @notice Fallback: No functions matched the function ID provided.
+
+      (revert)))
+  )
