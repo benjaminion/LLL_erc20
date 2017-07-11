@@ -15,9 +15,9 @@ Documentation](http://www.ethdocs.org/en/latest/contracts-and-transactions/contr
   over coding in EVM directly.
 
 LLL is one of the three living languages for Ethereum contract creation,
-alongside Solidity and Serpent (which itself compiles to LLL). If you have the
-Solidity compiler, then you may well have LLL already. It's bundled with some
-of the `solc` releases as `lllc`.
+alongside Solidity and Serpent/Viper (which itself compiles to LLL). If you
+have the Solidity compiler, then you may well have LLL already. It's bundled
+with some of the `solc` releases as `lllc`.
 
 It's fair to say that LLL is lagging substantially behind Solidity in
 popularity for contract creation. But Daniel Ellison of ConsenSys is on a
@@ -52,8 +52,8 @@ kind of developer by profession (which may be apparent from the code).
 
 ## *erc20.lll*: An implementation of Ethereum ERC20 tokens in LLL
 
-A fully functional (but as yet not fully tested) implementation of the [ERC20
-token standard](https://theethereum.wiki/w/index.php/ERC20_Token_Standard).
+A fully functional implementation of the [ERC20 token
+standard](https://theethereum.wiki/w/index.php/ERC20_Token_Standard).
 
 I know it looks a bit long-winded, but of the (original) 349 lines, 84 are
 blank, 138 are comment, and only 127 are actual code. These Lisp-like languages
@@ -84,11 +84,27 @@ Some things to bear in mind:
    contract](https://github.com/ethereum/solidity/blob/develop/std/StandardToken.sol)
    distributed with the Solidity source code. I've improved and modified it to
    bring it up to the functionality of my LLL contract, but the input
-   validation of the Solidity contract remains a little weaker.
+   validation of the Solidity contract remains a little weaker than my LLL
+   version.
 
-I've included both the optimised and unoptimised Solidity code; the LLL code
-generated is the same whether optimised or not (i.e. the optimiser can't
-improve it), which is noteworthy in and of itself.
+I've included both the optimised and unoptimised Solidity code in the
+benchmark; the LLL code generated is the same whether optimised or not
+(i.e. the optimiser can't improve it), which is noteworthy in and of itself.
+
+Benchmarking environment is as follows,
+
+```
+> /opt/node/bin/testrpc
+EthereumJS TestRPC v4.0.1 (ganache-core: 1.0.1)
+
+> solc --version
+solc, the solidity compiler commandline interface
+Version: 0.4.14-develop.2017.7.9+commit.027cad77.mod.Linux.g++
+
+> lllc --version
+LLLC, the Lovely Little Language Compiler 
+Version: 0.4.14-develop.2017.7.9+commit.027cad77.mod.Linux.g++
+```
 
 ### Deployment costs
 
@@ -113,29 +129,52 @@ each function which are common to both contracts and are unavoidable:
 
  * The cost of transferring the call data to the contract (identical for both).
 
-The point is to understand the overheads that each language entails, over and
-above the unavoidable activities that they have in common.  The full details
-are shown in the table underneath.
+The point is to understand the overheads entailed by the choice of one or other
+of the languages, over and above the unavoidable costs that they have in
+common. We are not benchmarking the EVM, we are benchmarking the relative
+performance of the languages.
 
 ![Comparison of gas costs: bar chart](images/ERC20_gas_comparison_chart.png)
 
+Full details of the calculations are shown in the table below, and are also
+available on [Google
+Drive](https://docs.google.com/spreadsheets/d/1Kdwbw_0mIjakCPfk_rcd5PjIbFJ0ISWS14ZQ_oeUWnE/edit?usp=sharing)
+
 ![Comparison of gas costs: table](images/ERC20_gas_comparison_table.png)
 
-Of course, `name()`, `symbol()`, `decimals()`, `totalSupply()` and
-`allowance()` are all constant functions, and are free to evaluate
+Of course, `name()`, `symbol()`, `decimals()`, `totalSupply()`, `balanceOf()`
+and `allowance()` are all constant functions, and are cost-less to evaluate
 off-blockchain. To make it more interesting, the chart is based on the cost of
-calling these functions from another contract (i.e. with
-`web3.eth.sendTransaction` rather than `web3.eth.call`.)
+calling these functions from another contract (i.e. I invoked them with
+`web3.eth.sendTransaction` rather than `web3.eth.call`).
 
 ### Conclusion
 
-Given the simplicity of this contract and the unavoidable overheads of dealing
-with permanent storage, LLL acquits itself pretty well, I think, being
-significantly cheaper even than optimised Solidity code across all the
-functions. For more complex functions the gains can only be expected to be
-greater.
+There are probably a couple of valid responses to all this.  On the one hand,
+overall, using LLL saves about 1.5% of the gas used by a ``transfer()``
+operation when compared to optimised Solidity.  Big deal, right?
 
-Where LLL really shines is in the code size and deployment costs. Given that
-this code will be on the blockchain in perpetuity, stored and executed on
-thousands of individual nodes worldwide, minimising its footprint must be a
-good thing in itself.
+On the other hand, given the simplicity of this contract and the unavoidable
+overheads of dealing with permanent storage, I think LLL acquits itself pretty
+well.  For the parts that the programmer and compiler actually have control
+over, LLL performs up to 75% more efficiently than optimised Solidity.  It is
+cheaper and smaller across the board.  As we implement more complex functions
+the gains can only be expected to be greater.
+
+Where LLL really shines is in the code size and deployment costs. Given that a
+contract's code will be on the blockchain in perpetuity, stored and executed on
+thousands and thousands of individual nodes worldwide, minimising its footprint
+must be a good thing _per se_.
+
+#### Reflections on coding in LLL
+
+This is obviously pretty personal, but for me coding in LLL seems like "cutting
+with the grain" of the EVM.  The transparency of the language makes it easy to
+reason about resource usage, security, efficiency and so on.
+
+I haven't done enough Solidity coding to form a firm view on it.  While it
+certainly makes some things easier to code - by no means everything - that
+comes at a cost both in simple gas terms, but also in understanding of "what's
+going on under the hood".  In the security critical environment of the
+blockchain, heavily resource constrained by the EVM, is that really a positive
+thing?
