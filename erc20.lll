@@ -91,7 +91,8 @@
     (seq
       (mstore 0x00 0x20)           ; Points to our string's memory location
       (mstore 0x20 string-literal) ; Length. String itself is copied to 0x40.
-      (return 0x00 (+ 0x40 (mload 0x20)))))
+      (return 0x00 (& (+ (mload 0x20) 0x5f) (~ 0x1f)))))
+                                   ; Round return up to 32 byte boundary
 
   ;; --------------------------------------------------------------------------
   ;; Convenience macro for raising Events
