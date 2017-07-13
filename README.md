@@ -57,14 +57,16 @@ standard](https://theethereum.wiki/w/index.php/ERC20_Token_Standard).
 
 I know it looks a bit long-winded, but of the (original) 349 lines, 84 are
 blank, 138 are comment, and only 127 are actual code. These Lisp-like languages
-lend themselves to sparse layout and lots of whitespace. I like this.  It is
-possible to write LLL code [much more
-compactly](https://github.com/ethereum/cpp-ethereum/wiki/LLL-Examples-for-PoC-5/04fae9e627ac84d771faddcf60098ad09230ab58),
-but I find that style quite impenetrable, and there's really no efficiency
-advantage. Actually, quite a lot of the preamble is re-usable and could be
+lend themselves to sparse layout and lots of whitespace. I like this.  It makes
+me feel calm. Actually, quite a lot of the preamble is re-usable and could be
 moved to an include file (yes, LLL [has a
 mechanism](http://lll-docs.readthedocs.io/en/latest/lll_reference.html#including-files-include)
 for this).
+
+It is possible to write LLL code [much more
+compactly](https://github.com/ethereum/cpp-ethereum/wiki/LLL-Examples-for-PoC-5/04fae9e627ac84d771faddcf60098ad09230ab58),
+but that makes my eyes hurt, and there's really no efficiency advantage in the
+compiled code.
 
 
 ## Benchmarking the ERC20 contract against Solidity
@@ -89,7 +91,7 @@ Some things to bear in mind:
 
 I've included both the optimised and unoptimised Solidity code in the
 benchmark; the LLL code generated is the same whether optimised or not
-(i.e. the optimiser can't improve it), which is noteworthy in and of itself.
+(i.e. the optimiser can't improve it, which is noteworthy in and of itself).
 
 Benchmarking environment is as follows,
 
@@ -138,7 +140,7 @@ performance of the languages.
 
 Full details of the calculations are shown in the table below, and are also
 available on [Google
-Drive](https://docs.google.com/spreadsheets/d/1Kdwbw_0mIjakCPfk_rcd5PjIbFJ0ISWS14ZQ_oeUWnE/edit?usp=sharing)
+Drive](https://docs.google.com/spreadsheets/d/1Kdwbw_0mIjakCPfk_rcd5PjIbFJ0ISWS14ZQ_oeUWnE/edit?usp=sharing) along with some explanatory notes.
 
 ![Comparison of gas costs: table](images/ERC20_gas_comparison_table.png)
 
@@ -157,9 +159,13 @@ operation when compared to optimised Solidity.  Big deal, right?
 On the other hand, given the simplicity of this contract and the unavoidable
 overheads of dealing with permanent storage, I think LLL acquits itself pretty
 well.  For the parts that the programmer and compiler actually have control
-over, LLL performs up to 75% more efficiently than optimised Solidity.  It is
-cheaper and smaller across the board.  As we implement more complex functions
-the gains can only be expected to be greater.
+over, LLL performs up to four times more efficiently than optimised Solidity.
+It is cheaper and smaller across the board.  As we implement more complex
+functions the gains can only be expected to be greater.
+
+Comparing the performance of the optimised and the unoptimised Solidity
+contracts, it's clear that changing the programming paradigm to LLL is vastly
+more effective than relying on the compiler to do the work for you.
 
 Where LLL really shines is in the code size and deployment costs. Given that a
 contract's code will be on the blockchain in perpetuity, stored and executed on
