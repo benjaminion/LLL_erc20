@@ -117,9 +117,9 @@
   ;;   The function ID is in the leftmost four bytes of the call data.
 
   (def 'uses-functions
-    (mstore
-      mem-func
-      (shr (calldataload 0x00) 224)))
+    (seq
+      (mstore mem-func 0)
+      (calldatacopy (+ mem-func 28) 0x00 4)))
 
   ;; --------------------------------------------------------------------------
   ;; GUARDS
