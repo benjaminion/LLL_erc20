@@ -2,21 +2,32 @@
 //
 // ERC20 test suite
 //
+// *** Needs web3.js version at least 1.0.0 ***
+//
 // Instructions:
 //
-// 1. Compile the bytecode:
+// 1. Compile the bytecode, e.g.
 //    > lllc ../erc20.lll > erc20_evm.dat
-// 2. Start testrpc (ideally in a different terminal)
+// 2. Start testrpc (ideally in a different terminal) with -d flag
 //    > /opt/node/lib/node_modules/ethereumjs-testrpc/bin/testrpc -d
-// 3. Run the tests:
-//    > DEBUG=0 node erc20.js
+// 3a. Run all the tests:
+//    > node erc20.js
+// 3b. Run the subset of tests matching 'regex'
+//    > node erc20.js 'regex'
+// 3c. Run with debugging info (n = 0,1,2 or 3)
+//    > DEBUG=n node erc20.js 'regex'
+//
+// Note that testrpc often crashes or incorrectly fails transactions now.
+// This didn't used to be a problem. I think the increased asynchronicity
+// is exposing some race condition or other.  It's not so much of a problem
+// when running only a subset of the tests.
 //
 // =============================================================================
 
-// TODO - Refactoring
-// TODO - Find a better way to pass the test function name around
-// TODO - Count successes and failures
-// TODO - Better criteria for debug levels
+// TODO - Try testing against cpp-ethereum
+
+// Test selection expression
+const testSelector = process.argv[2] || '';
 
 // Input files
 const abi_file = 'erc20_abi.json';
@@ -28,507 +39,711 @@ const DECIMALS = 2;
 const SYMBOL = 'BEN';
 const NAME = 'Ben Token'
 
-// These addresses are generated as standard by testrpc -d
-const ADDR0 = "0x90f8bf6a479f320ead074411a4b0e7944ea8c9c1";
-const ADDR1 = "0xffcf8fdee72ac11b5c542428b35eef5769c409f0";
-const ADDR2 = "0x22d491bde2303f2f43325b2108d26f1eaba1e32b";
-const ADDR3 = "0xe11ba2b4d45eaed5996cd0823791e0c93114882d";
-const ADDR4 = "0xd03ea8624c8c5987235048901fb614fdca89b117";
-
 // Set up Web3. Need testrpc to be running.
-var Web3 = require('web3');
-var web3 = new Web3();
-web3.setProvider(new web3.providers.HttpProvider('http://localhost:8545'));
+const Web3 = require('web3');
+const web3 = new Web3('http://localhost:8545');
 
+// These addresses are generated as standard by testrpc -d
+const ADDR0 = web3.utils.toChecksumAddress("0x90f8bf6a479f320ead074411a4b0e7944ea8c9c1");
+const ADDR1 = web3.utils.toChecksumAddress("0xffcf8fdee72ac11b5c542428b35eef5769c409f0");
+const ADDR2 = web3.utils.toChecksumAddress("0x22d491bde2303f2f43325b2108d26f1eaba1e32b");
+
+// Set up the Contract object
 const fs = require('fs');
-
-// Read the Contract ABI [TODO - error handling]
 const ABI = fs.readFileSync(abi_file,'utf8');
-const ERC20 = web3.eth.contract(JSON.parse(ABI));
-
-// Read the EVM bytecode [TODO - error handling]
 const EVM = fs.readFileSync(evm_file,'utf8').trim();
-const GAS = web3.eth.estimateGas({data:EVM});
+const ERC20 = new web3.eth.Contract(JSON.parse(ABI));
+ERC20.options.from = ADDR0;
+ERC20.options.data = EVM;
+ERC20.options.gas  = 4000000
 
 // =============================================================================
-// Control loop
+// The Tests
 
-// TODO - Automate this.
-// TODO - Allow specific tests to be given on the command-line.
+const theTests = {
 
-newTest(test_constants);
-newTest(test_balances);
-newTest(test_allowances);
-newTest(test_call_invalid_function);
-newTest(test_send_ether_to_transfer);
-newTest(test_low_level_transfer);
-newTest(test_too_little_call_data);
-newTest(test_too_much_call_data);
-newTest(test_invalid_address);
-newTest(test_transfer);
-newTest(test_transfer_too_much);
-newTest(test_approve);
-newTest(test_approve_too_much);
-newTest(test_transfer_from_no_approval);
-newTest(test_transfer_from_no_approval_zero);
-newTest(test_valid_transfer);
-newTest(test_invalid_transfer);
-newTest(test_multiple_transfers);
-newTest(test_multiple_approve);
-newTest(test_transfer_from);
-newTest(test_transfer_event);
-newTest(test_zero_transfer_no_event);
-newTest(test_approve_event);
+    // -------------------------------------------------------------------------
+    // Constant functions
+
+    t1_constants:function(testName, erc20)
+    {
+        Promise.all([
+            erc20.methods.symbol().call()
+                .then(checkResult(testName, 'string', SYMBOL))
+                .catch(checkResult(testName, 'isError', false)),
+            erc20.methods.name().call()
+                .then(checkResult(testName, 'string', NAME))
+                .catch(checkResult(testName, 'isError', false)),
+            erc20.methods.totalSupply().call()
+                .then(checkResult(testName, 'uint256', TOTALSUPPLY))
+                .catch(checkResult(testName, 'isError', false)),
+            erc20.methods.decimals().call()
+                .then(checkResult(testName, 'uint256', DECIMALS))
+                .catch(checkResult(testName, 'isError', false))
+        ]).then(finalResult(testName));
+    },
+
+    t1_balances:function(testName, erc20)
+    {
+        Promise.all([
+            erc20.methods.balanceOf(ADDR0).call()
+                .then(checkResult(testName, 'uint256', TOTALSUPPLY))
+                .catch(checkResult(testName, 'isError', false)),
+            erc20.methods.balanceOf(ADDR1).call()
+                .then(checkResult(testName, 'uint256', 0))
+                .catch(checkResult(testName, 'isError', false)),
+            erc20.methods.balanceOf(ADDR2).call()
+               .then(checkResult(testName, 'uint256', 0))
+                .catch(checkResult(testName, 'isError', false))
+        ]).then(finalResult(testName));
+    },
+
+
+    t1_allowances:function(testName, erc20)
+    {
+        erc20.methods.allowance(ADDR1,ADDR2).call()
+            .then(checkResult(testName, 'uint256', 0))
+            .catch(checkResult(testName, 'isError', false))
+            .then(finalResult(testName));
+    },
+
+    // -------------------------------------------------------------------------
+    // Input validation tests
+
+    t2_call_invalid_function:function(testName, erc20)
+    {
+        // Test sending correct and non-existent function selectors
+        Promise.all([
+
+            // Good function call - decimals()
+            web3.eth.call({to: erc20.options.address, data: '0x313ce567'})
+                .then(checkResult(testName, 'bytes32', decToBytes32(2)))
+                .catch(checkResult(testName, 'isError', false)),
+
+            // Call to non-existent function
+            web3.eth.call({to: erc20.options.address, data: '0x12345678'})
+                .then(checkResult(testName, 'isError', true))
+                .catch(checkResult(testName, 'isError', true))
+
+        ]).then(finalResult(testName));
+    },
+
+    t2_send_ether_to_transfer:function(testName, erc20)
+    {
+        // Any attempt to send Ether to the contract should fail.
+        web3.eth.sendTransaction({from: ADDR0, to: erc20.options.address, data: '0xa9059cbb' + hexToBytes32(ADDR1) + decToBytes32(1), value: 1})
+            .then(checkResult(testName, 'isError', true))
+            .catch(checkResult(testName, 'isError', true))
+            .then(finalResult(testName));
+    },
+
+    t2_low_level_transfer:function(testName, erc20)
+    {
+        // Check this works as expected as it is the template for the following
+        // tests. Transfer 1 Token from ADDR0 to ADDR1.
+        web3.eth.sendTransaction({from: ADDR0, to: erc20.options.address, data: '0xa9059cbb' + hexToBytes32(ADDR1) + decToBytes32(1)})
+            .then(checkResult(testName, 'isReceipt', true))
+            .catch(checkResult(testName, 'isError', false))
+            .then(finalResult(testName));
+    },
+
+    t2_too_little_call_data:function(testName, erc20)
+    {
+        // Test with transfer() function, providing truncated call data.
+        web3.eth.sendTransaction({from: ADDR0, to: erc20.options.address, data: '0xa9059cbb' + hexToBytes32(ADDR1) + decToBytes32(1).substr(2)})
+            .then(checkResult(testName, 'isError', true))
+            .catch(checkResult(testName, 'isError', true))
+            .then(finalResult(testName));
+    },
+
+    t2_too_much_call_data:function(testName, erc20)
+    {
+        // Test with transfer() function, providing extended call data.
+        web3.eth.sendTransaction({from: ADDR0, to: erc20.options.address, data: '0xa9059cbb' + hexToBytes32(ADDR1) + decToBytes32(1) + '00'})
+            .then(checkResult(testName, 'isError', true))
+            .catch(checkResult(testName, 'isError', true))
+            .then(finalResult(testName));
+    },
+
+    t2_invalid_address:function(testName, erc20)
+    {
+        // Test with transfer() function, providing a malformed address.
+        web3.eth.sendTransaction({from: ADDR0, to: erc20.options.address, data: '0xa9059cbb' + '01' + hexToBytes32(ADDR1).substr(2) + decToBytes32(1)})
+            .then(checkResult(testName, 'isError', true))
+            .catch(checkResult(testName, 'isError', true))
+            .then(finalResult(testName));
+    },
+
+    // -------------------------------------------------------------------------
+    // Smoke tests on transfer(), approve(), transferFrom()
+
+    t3_transfer:function(testName, erc20)
+    {
+        // Transfer 100 tokens from ADDR0 to ADDR1
+        erc20.methods.transfer(ADDR1, 100).send({from: ADDR0})
+            .then(checkResult(testName, 'isReceipt', true))
+            .catch(checkResult(testName, 'isError', false))
+            .then(finalResult(testName));
+    },
+
+    t3_transfer_too_much:function(testName, erc20)
+    {
+        // Try to send more than totalSupply
+        erc20.methods.transfer(ADDR1, 1 + TOTALSUPPLY).send({from: ADDR0})
+            .then(checkResult(testName, 'isError', true))
+            .catch(checkResult(testName, 'isError', true))
+            .then(finalResult(testName));
+    },
+
+    t3_approve:function(testName, erc20)
+    {
+        // Approve ADDR1 to transfer 100 tokens from ADDR0
+        erc20.methods.approve(ADDR1, 100).send({from: ADDR0})
+            .then(checkResult(testName, 'isReceipt', true))
+            .catch(checkResult(testName, 'isError', false))
+            .then(finalResult(testName));
+    },
+
+    t3_approve_too_much:function(testName, erc20)
+    {
+        // Approve ADDR1 to transfer more than totalSupply tokens from ADDR0
+        erc20.methods.approve(ADDR1, 1 + TOTALSUPPLY).send({from: ADDR0})
+            .then(checkResult(testName, 'isError', true))
+            .catch(checkResult(testName, 'isError', true))
+            .then(finalResult(testName));
+    },
+
+    t3_transfer_from_no_approval:function(testName, erc20)
+    {
+        // ADDR1 tries transfer from ADDR0 to ADDR2 without having approval
+        erc20.methods.transferFrom(ADDR0, ADDR2, 100).send({from: ADDR1})
+            .then(checkResult(testName, 'isError', true))
+            .catch(checkResult(testName, 'isError', true))
+            .then(finalResult(testName));
+    },
+
+    t3_transfer_from_no_approval_zero:function(testName, erc20)
+    {
+        // ADDR1 tries transfer from ADDR0 to ADDR2 without having approval
+        // But zero value, so should not be an error.
+        erc20.methods.transferFrom(ADDR0, ADDR2, 0).send({from: ADDR1})
+            .then(checkResult(testName, 'isReceipt', true))
+            .catch(checkResult(testName, 'isError', false))
+            .then(finalResult(testName));
+    },
+
+    // -------------------------------------------------------------------------
+    // End-to-End Tests
+
+    t4_valid_transfer:function(testName, erc20)
+    {
+        let amount = 1000;
+        let addr0_startTokens;
+        let addr1_startTokens;
+
+        serialExec([
+
+            // Save initial balances
+            next => {erc20.methods.balanceOf(ADDR0).call()
+                     .then(bal => {addr0_startTokens = parseInt(bal)})
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+            next => {erc20.methods.balanceOf(ADDR1).call()
+                     .then(bal => {addr1_startTokens = parseInt(bal)})
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Successful transfer
+            next => {erc20.methods.transfer(ADDR1, amount).send({from: ADDR0})
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Check balances
+            next => {erc20.methods.balanceOf(ADDR0).call()
+                     .then(checkResult(testName, 'uint256', addr0_startTokens - amount))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+            next => {erc20.methods.balanceOf(ADDR1).call()
+                     .then(checkResult(testName, 'uint256', addr1_startTokens + amount))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(finalResult(testName))},
+        ]);
+    },
+
+    t4_invalid_transfer:function(testName, erc20)
+    {
+        let addr0_startTokens;
+        let addr1_startTokens;
+
+        serialExec([
+
+            // Save initial balances
+            next => {erc20.methods.balanceOf(ADDR0).call()
+                     .then(bal => {addr0_startTokens = parseInt(bal)})
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+            next => {erc20.methods.balanceOf(ADDR1).call()
+                     .then(bal => {addr1_startTokens = parseInt(bal)})
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Unsuccessful transfer
+            next => {erc20.methods.transfer(ADDR1, addr0_startTokens + 1).send({from: ADDR0})
+                     .then(checkResult(testName, 'isError', true))
+                     .catch(checkResult(testName, 'isError', true))
+                     .then(next)},
+
+            // Check balances
+            next => {erc20.methods.balanceOf(ADDR0).call()
+                     .then(checkResult(testName, 'uint256', addr0_startTokens))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+            next => {erc20.methods.balanceOf(ADDR1).call()
+                     .then(checkResult(testName, 'uint256', addr1_startTokens))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(finalResult(testName))}
+        ]);
+    },
+
+    t4_multiple_transfers:function(testName, erc20)
+    {
+        let amount;
+        let addr0_startTokens;
+        let addr1_startTokens;
+
+        serialExec([
+
+            // Save initial balances and calculate transfer amount
+            next => {erc20.methods.balanceOf(ADDR0).call()
+                     .then(bal => {
+                         addr0_startTokens = parseInt(bal);
+                         amount = 1 + Math.floor(addr0_startTokens / 3);})
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+            next => {erc20.methods.balanceOf(ADDR1).call()
+                     .then(bal => {addr1_startTokens = parseInt(bal)})
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Two successful transfers and an unsuccessful
+            next => {erc20.methods.transfer(ADDR1, amount).send({from: ADDR0})
+                     .then(checkResult(testName, 'isReceipt', true))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+            next => {erc20.methods.transfer(ADDR1, amount).send({from: ADDR0})
+                     .then(checkResult(testName, 'isReceipt', true))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+            next => {erc20.methods.transfer(ADDR1, amount).send({from: ADDR0})
+                     .then(checkResult(testName, 'isError', true))
+                     .catch(checkResult(testName, 'isError', true))
+                     .then(next)},
+
+            // Check balances
+            next => {erc20.methods.balanceOf(ADDR0).call()
+                     .then(checkResult(testName, 'uint256', addr0_startTokens - 2 * amount))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+            next => {erc20.methods.balanceOf(ADDR1).call()
+                     .then(checkResult(testName, 'uint256', addr1_startTokens + 2 * amount))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(finalResult(testName))},
+        ]);
+    },
+
+    t4_multiple_approve:function(testName, erc20)
+    {
+        serialExec([
+
+            // Check ADDR0 => ADDR1 allowance is 0
+            next => {erc20.methods.allowance(ADDR0, ADDR1).call()
+                     .then(checkResult(testName, 'uint256', 0))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Set allowance ADDR0 => ADDR1 to 1000
+            next => {erc20.methods.approve(ADDR1, 1000).send({from: ADDR0})
+                     .then(checkResult(testName, 'isReceipt', true))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Check ADDR0 => ADDR1 allowance is 1000
+            next => {erc20.methods.allowance(ADDR0, ADDR1).call()
+                     .then(checkResult(testName, 'uint256', 1000))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Try to set allowance ADDR0 => ADDR1 to 500 (should fail)
+            next => {erc20.methods.approve(ADDR1, 500).send({from: ADDR0})
+                     .then(checkResult(testName, 'isError', true))
+                     .catch(checkResult(testName, 'isError', true))
+                     .then(next)},
+
+            // Check ADDR0 => ADDR1 allowance is still 1000
+            next => {erc20.methods.allowance(ADDR0, ADDR1).call()
+                     .then(checkResult(testName, 'uint256', 1000))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Set allowance ADDR0 => ADDR1 to 0
+            next => {erc20.methods.approve(ADDR1, 0).send({from: ADDR0})
+                     .then(checkResult(testName, 'isReceipt', true))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Check ADDR0 => ADDR1 allowance is now 0
+            next => {erc20.methods.allowance(ADDR0, ADDR1).call()
+                     .then(checkResult(testName, 'uint256', 0))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Try to set allowance ADDR0 => ADDR1 to 500 (should succeed)
+            next => {erc20.methods.approve(ADDR1, 500).send({from: ADDR0})
+                     .then(checkResult(testName, 'isReceipt', true))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Check ADDR0 => ADDR1 allowance is now 500
+            next => {erc20.methods.allowance(ADDR0, ADDR1).call()
+                     .then(checkResult(testName, 'uint256', 500))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(finalResult(testName))}
+        ]);
+    },
+
+    t4_transfer_from:function(testName, erc20)
+    {
+        let addr0_startTokens;
+        let addr2_startTokens;
+
+        serialExec([
+
+            // Save initial balances
+            next => {erc20.methods.balanceOf(ADDR0).call()
+                     .then(bal => {addr0_startTokens = parseInt(bal)})
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+            next => {erc20.methods.balanceOf(ADDR2).call()
+                     .then(bal => {addr2_startTokens = parseInt(bal)})
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Check ADDR0 => ADDR1 allowance is 0
+            next => {erc20.methods.allowance(ADDR0, ADDR1).call()
+                     .then(checkResult(testName, 'uint256', 0))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // ADDR1 tries transfer from ADDR0 to ADDR2 with no allowance
+            next => {erc20.methods.transferFrom(ADDR0, ADDR2, 42).send({from: ADDR1})
+                     .then(checkResult(testName, 'isError', true))
+                     .catch(checkResult(testName, 'isError', true))
+                     .then(next)},
+
+            // Set allowance ADDR0 => ADDR1 to 83
+            next => {erc20.methods.approve(ADDR1, 83).send({from: ADDR0})
+                     .then(checkResult(testName, 'isReceipt', true))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Check ADDR0 => ADDR1 allowance is now 83
+            next => {erc20.methods.allowance(ADDR0, ADDR1).call()
+                     .then(checkResult(testName, 'uint256', 83))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // ADDR1 transfers 42 from ADDR0 to ADDR2
+            next => {erc20.methods.transferFrom(ADDR0, ADDR2, 42).send({from: ADDR1})
+                     .then(checkResult(testName, 'isReceipt', true))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Check balance of ADDR0 is start-42, ADDR2 is start+42
+            next => {erc20.methods.balanceOf(ADDR0).call()
+                     .then(checkResult(testName, 'uint256', addr0_startTokens - 42))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+            next => {erc20.methods.balanceOf(ADDR2).call()
+                     .then(checkResult(testName, 'uint256', addr2_startTokens + 42))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Check ADDR0 => ADDR1 allowance is now 41
+            next => {erc20.methods.allowance(ADDR0, ADDR1).call()
+                     .then(checkResult(testName, 'uint256', 41))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // ADDR1 tries to transfer 42 from ADDR0 to ADDR2 (should fail)
+            next => {erc20.methods.transferFrom(ADDR0, ADDR2, 42).send({from: ADDR1})
+                     .then(checkResult(testName, 'isError', true))
+                     .catch(checkResult(testName, 'isError', true))
+                     .then(next)},
+
+            // Check balance of ADDR0 remains start-42, ADDR2 +42
+            next => {erc20.methods.balanceOf(ADDR0).call()
+                     .then(checkResult(testName, 'uint256', addr0_startTokens - 42))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+            next => {erc20.methods.balanceOf(ADDR2).call()
+                     .then(checkResult(testName, 'uint256', addr2_startTokens + 42))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(finalResult(testName))}
+        ]);
+    },
+
+    // -------------------------------------------------------------------------
+    // Events
+
+    t5_transfer_event:function(testName, erc20)
+    {
+        erc20.methods.transfer(ADDR1, 42).send({from: ADDR0})
+            .then(checkResult(testName, 'event', {Transfer: {_value: '42', _from: ADDR0, _to: ADDR1}}))
+            .catch(checkResult(testName, 'isError', false))
+            .then(finalResult(testName));
+    },
+
+    t5_zero_transfer_no_event:function(testName, erc20)
+    {
+
+        erc20.methods.transfer(ADDR1, 0).send({from: ADDR0})
+            .then(checkResult(testName, 'hasEvent', false))
+            .catch(checkResult(testName, 'isError', false))
+            .then(finalResult(testName));
+    },
+
+    t5_approve_event:function(testName, erc20)
+    {
+        erc20.methods.approve(ADDR1, 1234).send({from: ADDR0})
+            .then(checkResult(testName, 'event', {Approval: {_value: '1234', _owner: ADDR0, _spender: ADDR1}}))
+            .catch(checkResult(testName, 'isError', false))
+            .then(finalResult(testName));
+    },
+
+    t5_transfer_from_event:function(testName, erc20)
+    {
+        serialExec([
+            next => {erc20.methods.approve(ADDR1, 1000).send({from: ADDR0})
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            next => {erc20.methods.transferFrom(ADDR0, ADDR2, 42).send({from: ADDR1})
+                     .then(checkResult(testName, 'event', {Transfer: {_value: '42', _from: ADDR0, _to: ADDR2}}))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(finalResult(testName))}
+        ])
+    },
+
+    t5_zero_transfer_from_no_event:function(testName, erc20)
+    {
+        serialExec([
+
+            next => {erc20.methods.approve(ADDR1, 1000).send({from: ADDR0})
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            next => {erc20.methods.transferFrom(ADDR0, ADDR2, 0).send({from: ADDR1})
+                     .then(checkResult(testName, 'hasEvent', false))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(finalResult(testName))}
+        ]);
+    },
+
+}
 
 // =============================================================================
+// Control Loop
 //
-// Test functions
+// List the tests and execute the ones that match the selector Regex
 //
-// =============================================================================
 
-// =============================================================================
-// Constant functions
-
-function test_constants(erc20)
-{
-    testAssert(erc20.symbol(), 'string', SYMBOL);
-    testAssert(erc20.name(), 'string', NAME);
-    testAssert(erc20.totalSupply(), 'uint256', TOTALSUPPLY);
-    testAssert(erc20.decimals(), 'uint256', DECIMALS);
-}
-
-function test_balances(erc20)
-{
-    testAssert(erc20.balanceOf(ADDR0), 'uint256', TOTALSUPPLY);
-    testAssert(erc20.balanceOf(ADDR1), 'uint256', 0);
-    testAssert(erc20.balanceOf(ADDR2), 'uint256', 0);
-}
-
-function test_allowances(erc20)
-{
-    testAssert(erc20.allowance(ADDR1,ADDR2), 'uint256', 0);
-}
-
-// =============================================================================
-// Input validation tests
-
-function test_call_invalid_function(erc20)
-{
-    // Test behaviour when sending correct and non-existent function selectors
-
-    // Good function call - decimals()
-    testAssert(
-        safeCall(web3.eth.call, {to: erc20.address, data: '0x313ce567'}),
-        'isBytes32', true);
-
-    // Call to non-existent function
-    testAssert(
-        safeCall(web3.eth.call, {to: erc20.address, data: '0x12345678'}),
-        'bool', false);
-}
-
-function test_send_ether_to_transfer(erc20)
-{
-    // Any attempt to send Ether to the contract should fail.
-    testAssert(
-        safeCall(
-            web3.eth.sendTransaction,
-            {from: ADDR0, to: erc20.address, data: '0xa9059cbb', value: 1}),
-        'bool', false);
-}
-
-function test_low_level_transfer(erc20)
-{
-    // Check this works as expected as it is the template for the following
-    // tests. Transfer 1 Token from ADDR0 to ADDR1.
-    testAssert(
-        safeCall(
-            web3.eth.sendTransaction,
-            {from: ADDR0, to: erc20.address, data: '0xa9059cbb' + bytes32(ADDR1) + uint256(1)}),
-        'isBytes32', true);
-}
-
-function test_too_little_call_data(erc20)
-{
-    // Test with transfer() function, providing truncated call data.
-    testAssert(
-        safeCall(
-            web3.eth.sendTransaction,
-            {from: ADDR0, to: erc20.address, data: '0xa9059cbb' + bytes32(ADDR1) + uint256(1).substr(2)}),
-        'bool', false);
-}
-
-function test_too_much_call_data(erc20)
-{
-    // Test with transfer() function, providing extended call data.
-    testAssert(
-        safeCall(
-            web3.eth.sendTransaction,
-            {from: ADDR0, to: erc20.address, data: '0xa9059cbb' + bytes32(ADDR1) + uint256(1) + '00'}),
-        'bool', false);
-}
-
-function test_invalid_address(erc20)
-{
-    // Test with transfer() function, providing a malformed address.
-    testAssert(
-        safeCall(
-            web3.eth.sendTransaction,
-            {from: ADDR0, to: erc20.address, data: '0xa9059cbb' + '01' + bytes32(ADDR1).substr(2) + uint256(1)}),
-        'bool', false);
-}
-
-// =============================================================================
-// Smoke tests on transfer(), approve(), transferFrom()
-
-function test_transfer(erc20)
-{
-    // Transfer 100 tokens from ADDR0 to ADDR1
-    testAssert(
-        safeCall(erc20.transfer, ADDR1, 100, {from: ADDR0}), 
-        'isBytes32', true);
-}
-
-function test_transfer_too_much(erc20)
-{
-    // Try to send more than totalSupply
-    testAssert(
-        safeCall(erc20.transfer, ADDR1, 1+TOTALSUPPLY, {from: ADDR0}), 
-        'bool', false);
-}
-
-function test_approve(erc20)
-{
-    // Approve ADDR1 to transfer 100 tokens from ADDR0
-    testAssert(
-        safeCall(erc20.approve, ADDR1, 100, {from: ADDR0}), 
-        'isBytes32', true);
-}
-
-function test_approve_too_much(erc20)
-{
-    // Approve ADDR1 to transfer more that totalSupply tokens from ADDR0
-    testAssert(
-        safeCall(erc20.approve, ADDR1, 1+TOTALSUPPLY, {from: ADDR0}), 
-        'bool', false);
-}
-
-function test_transfer_from_no_approval(erc20)
-{
-    // ADDR1 tries transfer from ADDR0 to ADDR2 without having approval
-    testAssert(
-        safeCall(erc20.transferFrom, ADDR0, ADDR2, 100, {from: ADDR1}), 
-        'bool', false);
-}
-
-function test_transfer_from_no_approval_zero(erc20)
-{
-    // ADDR1 tries transfer from ADDR0 to ADDR2 without having approval
-    // But zero value, so should not be an error.
-    testAssert(
-        safeCall(erc20.transferFrom, ADDR0, ADDR2, 0, {from: ADDR1}), 
-        'isBytes32', true);
-}
-
-
-// =============================================================================
-// End-to-End Tests
-
-function test_valid_transfer(erc20)
-{
-    var addr0_startTokens = erc20.balanceOf(ADDR0);
-    var addr1_startTokens = erc20.balanceOf(ADDR1);
-
-    testAssert(
-        safeCall(erc20.transfer, ADDR1, 1000, {from: ADDR0}), 
-        'isBytes32', true);
-
-    testAssert(erc20.balanceOf(ADDR0), 'int256', addr0_startTokens - 100);
-    testAssert(erc20.balanceOf(ADDR1), 'int256', addr1_startTokens + 100);
-}
-
-function test_invalid_transfer(erc20)
-{
-    var addr0_startTokens = erc20.balanceOf(ADDR0);
-    var addr1_startTokens = erc20.balanceOf(ADDR1);
-
-    testAssert(
-        safeCall(erc20.transfer, ADDR1, addr0_startTokens+1, {from: ADDR0}), 
-        'bool', false);
-
-    testAssert(erc20.balanceOf(ADDR0), 'int256', addr0_startTokens);
-    testAssert(erc20.balanceOf(ADDR1), 'int256', addr1_startTokens);
-}
-
-function test_multiple_transfers(erc20)
-{
-    var addr0_startTokens = erc20.balanceOf(ADDR0);
-    var addr1_startTokens = erc20.balanceOf(ADDR1);
-
-    var amount = 1 + Math.floor(addr0_startTokens / 3);
-    
-    testAssert(
-        safeCall(erc20.transfer, ADDR1, amount, {from: ADDR0}), 
-        'isBytes32', true);
-
-    testAssert(
-        safeCall(erc20.transfer, ADDR1, amount, {from: ADDR0}), 
-        'isBytes32', true);
-
-    testAssert(
-        safeCall(erc20.transfer, ADDR1, amount, {from: ADDR0}), 
-        'bool', false);
-
-    testAssert(erc20.balanceOf(ADDR0), 'int256', addr0_startTokens - 2*amount);
-    testAssert(erc20.balanceOf(ADDR1), 'int256', addr1_startTokens + 2*amount);
-}
-
-function test_multiple_approve(erc20)
-{
-    // Check ADDR0 => ADDR1 allowance is 0
-    testAssert(
-        safeCall(erc20.allowance, ADDR0, ADDR1),
-        'uint256', 0);
-
-    // Set allowance ADDR0 => ADDR1 to 1000
-    testAssert(
-        safeCall(erc20.approve, ADDR1, 1000, {from: ADDR0}), 
-        'isBytes32', true);
-
-    // Check ADDR0 => ADDR1 allowance is 1000
-    testAssert(
-        safeCall(erc20.allowance, ADDR0, ADDR1),
-        'uint256', 1000);
-
-    // Try to set allowance ADDR0 => ADDR1 to 500 (should fail)
-    testAssert(
-        safeCall(erc20.approve, ADDR1, 500, {from: ADDR0}), 
-        'bool', false);
-
-    // Check ADDR0 => ADDR1 allowance is still 1000
-    testAssert(
-        safeCall(erc20.allowance, ADDR0, ADDR1),
-        'uint256', 1000);
-
-    // Set allowance ADDR0 => ADDR1 to 0
-    testAssert(
-        safeCall(erc20.approve, ADDR1, 0, {from: ADDR0}), 
-        'isBytes32', true);
-
-    // Check ADDR0 => ADDR1 allowance is now 0
-    testAssert(
-        safeCall(erc20.allowance, ADDR0, ADDR1),
-        'uint256', 0);
-
-    // Try to set allowance ADDR0 => ADDR1 to 500 (should succeed)
-    testAssert(
-        safeCall(erc20.approve, ADDR1, 500, {from: ADDR0}), 
-        'isBytes32', true);
-
-    // Check ADDR0 => ADDR1 allowance is now 500
-    testAssert(
-        safeCall(erc20.allowance, ADDR0, ADDR1),
-        'uint256', 500);
-}
-
-function test_transfer_from(erc20)
-{
-    var addr0_startTokens = erc20.balanceOf(ADDR0);
-    var addr2_startTokens = erc20.balanceOf(ADDR2);
-
-    // Check ADDR0 => ADDR1 allowance is 0
-    testAssert(
-        safeCall(erc20.allowance, ADDR0, ADDR1),
-        'uint256', 0);
-
-    // ADDR1 tries transfer from ADDR0 to ADDR2 with no allowance
-    testAssert(
-        safeCall(erc20.transferFrom, ADDR0, ADDR2, 42, {from: ADDR1}), 
-        'bool', false);
-
-    // Set allowance ADDR0 => ADDR1 to 83
-    testAssert(
-        safeCall(erc20.approve, ADDR1, 83, {from: ADDR0}), 
-        'isBytes32', true);
-
-    // Check ADDR0 => ADDR1 allowance is now 83
-    testAssert(
-        safeCall(erc20.allowance, ADDR0, ADDR1),
-        'uint256', 83);
-
-    // ADDR1 transfers 42 from ADDR0 to ADDR2
-    testAssert(
-        safeCall(erc20.transferFrom, ADDR0, ADDR2, 42, {from: ADDR1}), 
-        'isBytes32', true);
-
-    // Check balance of ADDR0 is start-42, ADDR2 is +42
-    testAssert(erc20.balanceOf(ADDR0), 'int256', addr0_startTokens - 42);
-    testAssert(erc20.balanceOf(ADDR2), 'int256', addr2_startTokens + 42);
-
-    // Check ADDR0 => ADDR1 allowance is now 41
-    testAssert(
-        safeCall(erc20.allowance, ADDR0, ADDR1),
-        'uint256', 41);
-
-    // ADDR1 tries to transfer 42 from ADDR0 to ADDR2 (should fail)
-    testAssert(
-        safeCall(erc20.transferFrom, ADDR0, ADDR2, 42, {from: ADDR1}), 
-        'bool', false);
-
-    // Check balance of ADDR0 remains start-42, ADDR2 +42
-    testAssert(erc20.balanceOf(ADDR0), 'int256', addr0_startTokens - 42);
-    testAssert(erc20.balanceOf(ADDR2), 'int256', addr2_startTokens + 42);
-}
-
-// =============================================================================
-// Events
-
-function test_transfer_event(erc20)
-{
-    var events = erc20.Transfer({},{fromBlock: 0, toBlock: 'latest'});
-
-    erc20.transfer(ADDR1, 321, {from: ADDR0});
-
-    var myResults = events.get(function(error, logs){
-        if(!error) {
-            let foo = JSON.parse(JSON.stringify(logs));
-            testAssert(foo[0].args._from,  'string', ADDR0);
-            testAssert(foo[0].args._to,    'string', ADDR1);
-            testAssert(foo[0].args._value, 'string', '321');
-        }
-    });
-
-    events.stopWatching();
-}
-
-function test_zero_transfer_no_event(erc20)
-{
-    var events = erc20.Transfer({},{fromBlock: 0, toBlock: 'latest'});
-
-    erc20.transfer(ADDR1, 0, {from: ADDR0});
-
-    var myResults = events.get(function(error, logs){
-        if(!error) {
-            testAssert(JSON.stringify(logs), 'string', '[]');
-        }
-    });
-
-    events.stopWatching();
-}
-
-function test_approve_event(erc20)
-{
-    var events = erc20.Approval({},{fromBlock: 0, toBlock: 'latest'});
-
-    erc20.approve(ADDR1, 1234, {from: ADDR0});
-
-    var myResults = events.get(function(error, logs){
-        if(!error) {
-            debug(3, JSON.stringify(logs));
-            let foo = JSON.parse(JSON.stringify(logs));
-            testAssert(foo[0].args._owner,   'string', ADDR0);
-            testAssert(foo[0].args._spender, 'string', ADDR1);
-            testAssert(foo[0].args._value,   'string', '1234');
-        }
-    });
-
-    events.stopWatching();
+var tests = getAllMethods(theTests);
+var testsToRun = tests.filter(function(name){return name.match(testSelector)});
+var numTestsToRun = testsToRun.length;
+var allTestResults = {};
+var testsPassed = 0, testsFailed = 0;
+
+console.log('Running ' + numTestsToRun + ' test'
+            + (numTestsToRun == 1 ? '.' : 's.'));
+
+for (let i = 0; i < numTestsToRun; i++) {
+    let testName = testsToRun[i];
+    allTestResults[testName] = true;
+    newTest(testName, theTests[testName]);
 }
 
 // =============================================================================
 // Helper functions
 
-function newTest(test)
+// Used to list the names of the available tests
+function getAllMethods(object)
 {
-    ERC20.new(
-        {from: ADDR0, data: EVM, gas: GAS},
-        function(err, myContract){
-            if(!err) {
-                // NOTE: The callback will fire twice!
-                // Once the contract has the transactionHash property set
-                // and once its deployed on an address.
-                if(myContract.address) {
-                    debug(3, '[newTest] Contract deployed to ' + myContract.address);
-                    debug(1, '[newTest] Starting ' + test.name);
-                    test(myContract);
-                } else {
-                    // TODO - error handling.
-                }
+    return Object.getOwnPropertyNames(object).filter(function(property) {
+        return typeof object[property] == 'function';
+    });
+}
+
+// Re-deploy the contract and run the `test` function with name `testName`
+function newTest(testName, test)
+{
+    ERC20.deploy().send().then(
+        function(myContract){
+            if(myContract.options.address) {
+                debug(2, '[newTest] Contract deployed to ' + myContract.options.address);
+                debug(1, '[newTest] Starting ' + testName);
+                return test(testName, myContract);
+            } else {
+                // TODO - error handling.
             }
         });
 }
 
-function testAssert(result, type, expected)
+// Sometimes it's useful to serialise the execution of the asynchronous calls
+function serialExec(callbacks)
 {
-    var testName = arguments.callee.caller.name;
-    debug(2, '[testAssert] result = ' + result + ', expected = ' + expected);
-    pass = compare(type, result, expected);
-    if (!pass) {
-        console.log('*** Failure in test ' + testName);
-        console.log('  Expected: ' + expected);
-        console.log('  Got:      ' + result);
+    function next()
+    {
+        let callback = callbacks.shift();
+        if(callback) {
+            callback(function() {next();});
+        }
     }
+    next();
+}
+
+// Aggregate the results of each individual subtest making up a larger test
+function logResult(testName, pass)
+{
+    allTestResults[testName] &= pass;
     debug(0, '[testAssert] ' + testName + (pass ? ' PASSED' : ' FAILED'));
-    return(pass);
+}
+
+// Output the final result of a test when all promises have resolved
+function processResult(testName)
+{
+    console.log(testName + ': '
+                + (allTestResults[testName] ? 'PASSED' : 'FAILED'));
+    if (allTestResults[testName]) {
+        testsPassed++;
+    } else {
+        testsFailed++;
+    }
+    console.log('  Tests passed: ' + testsPassed + '. Tests failed: ' + testsFailed + '.' + "\n");
+}
+
+// -----------------------------------------------------------------------------
+// Callback functions, curried for ease of parameter handling.
+
+// Callback to check that the actual result of a test
+// matches the expected result.
+function checkResult(testName, type, expected)
+{
+    return function(result)
+    {
+        testAssert(testName, result, type, expected);
+    }
+}
+
+// Callback to output the final result of a test once all promises resolve
+function finalResult(testName)
+{
+    return function(v)
+    {
+        processResult(testName);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// For checking test results
+
+function testAssert(testName, result, type, expected)
+{
+    debug(2, '[testAssert] result = ' + result + ', expected = ' + expected + ', type = ' + type);
+    let pass = compare(type, result, expected);
+    if (!pass) {
+        debug(1, '*** Failure in test ' + testName);
+        debug(1, '  Expected: ' + expected);
+        debug(1, '  Got:      ' + result);
+        debug(1, '  Return:   ' + pass);
+    }
+    logResult(testName, pass);
 }
 
 function compare(type, result, expected)
 {
     debug(3, '[compare] typeof result = ' + typeof result + ', typeof expected = ' + typeof expected);
+    debug(2, '[compare] Looking for ' + type);
     switch(type) {
     case 'string':
         return(result === expected);
         break;
     case 'uint256':
-        return(result.equals(web3.toBigNumber(expected)));
+        return(result === expected.toString());
         break;
-    case 'isBytes32':
-        return(result && result.length === 66 && result.match('0x[0-9a-fA-F]*') !== null);
+    case 'bytes32':
+        return(result === '0x' + expected);
         break;
-    case 'bool':
-        return(result === expected);
+    case 'isReceipt':
+        return((result.transactionHash !== undefined) === expected);
+        break;
+    case 'isError':
+        return((result instanceof Error) === expected);
+        break;
+    case 'hasEvent':
+        debug(3, '[compare] result.events: ' + JSON.stringify(result, null, 1));
+        return ((result.events !== undefined && Object.keys(result.events).length !== 0) === expected);
+        break;
+    case 'event':
+        let events = result.events;
+        if (events === undefined) {
+            debug(3, '[compare] result does not have an events key:');
+            debug(3, '[compare] ' + JSON.stringify(result, null , 1));
+            return false;
+        }
+        let eventName = Object.keys(expected)[0];
+        if (events[eventName] === undefined) {
+            debug(3, '[compare] event ' + eventName + ' not found.');
+            debug(3, '[compare] ' + JSON.stringify(events, null, 1));
+            return false;
+        }
+        let expKeys = Object.keys(expected[eventName]);
+        for (let i=0; i<expKeys.length; i++) {
+            debug(2, '[compare] Comparing ' + expKeys[i]);
+            if (events[eventName]['returnValues'][expKeys[i]] !== expected[eventName][expKeys[i]]) {
+                debug(3, '[compare] For expected key ' + expKeys[i] + ': ' + expected[eventName][expKeys[i]]);
+                debug(3, '[compare] Got: ' + events[eventName]['returnValues'][expKeys[i]]);
+                debug(3, '[compare] ' + JSON.stringify(events, null, 1));
+                return false;
+            }
+        }
+        return true;
         break;
     default:
+        debug(2, '[compare] Type ' + type + ' is not recognised.');
         return('Type error: ' + type);
     }
 }
 
-// Callback to allow graceful handling of failures in contract execution
-// This is a bit tricky. Basically the first arg is the function to be
-// called, the remainder are the function arguments/parameters.
-function safeCall() {
-    var args = Array.from(arguments);
-    var func = args[0];
-    var params = args.slice(1);
-    try {
-        debug(3, '[safeCall] ' + func.name);
-        debug(3, '[safeCall] ' + JSON.stringify(params));
-        return(func.apply(func, params));
-    } catch(err) {
-        debug(2, '[safeCall] ' + err);
-        return(false);
-    }
+// Extends Hex numbers to 32 bytes and drops the 0x
+function hexToBytes32(param)
+{
+    return(web3.utils.leftPad(param, 64).substr(2))
 }
 
+// Converts integers to 32 byte hex form (no leading 0x)
+function decToBytes32(param)
+{
+    return(hexToBytes32(web3.utils.fromDecimal(param)));
+}
+
+// -----------------------------------------------------------------------------
+// Deubugging
+
 // e.g. DEBUG=2 node erc20.js
-let debugLevel = parseInt(process.env.DEBUG);
+var debugLevel = parseInt(process.env.DEBUG);
 function debug(level, message)
 {
     if(debugLevel !== NaN && debugLevel >= level) {
         console.log('DEBUG[' + level + '] ' + message);
     }
-}
-
-// Extends Hex numbers to 32 bytes and drops the 0x
-function bytes32(param)
-{
-    var stripped = param.substr(2);
-    var len = stripped.length;
-    return ('0000000000000000000000000000000000000000000000000000000000000000'.substr(len) + stripped);
-}
-
-// Converts integers to 32 byte hex form (no leading 0x)
-function uint256(param)
-{
-    return(bytes32(web3.fromDecimal(param)));
 }
