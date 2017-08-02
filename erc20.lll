@@ -63,7 +63,7 @@
   (def 'allowance (owner spender)
     (seq
       (mstore mem-keccak spender)
-      (keccak256 mem-keccak 0x20)))
+      (add owner (keccak256 mem-keccak 0x20))))
   
   ;; --------------------------------------------------------------------------
   ;; For convenience we have macros to refer to function arguments
