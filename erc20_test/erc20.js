@@ -492,6 +492,135 @@ const theTests = {
         ]);
     },
 
+    t4_multiple_allowances_1:function(testName, erc20)
+    {
+        serialExec([
+
+            // Check that multiple approvals from different owners for
+            // the same spender are correctly handled.
+
+            // Check ADDR0 => ADDR2 allowance is 0
+            next => {erc20.methods.allowance(ADDR0, ADDR2).call()
+                     .then(checkResult(testName, 'uint256', 0))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Check ADDR1 => ADDR2 allowance is 0
+            next => {erc20.methods.allowance(ADDR1, ADDR2).call()
+                     .then(checkResult(testName, 'uint256', 0))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Set allowance ADDR0 => ADDR2 to 10
+            next => {erc20.methods.approve(ADDR2, 10).send({from: ADDR0})
+                     .then(checkResult(testName, 'isReceipt', true))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Set allowance ADDR1 => ADDR2 to 20
+            next => {erc20.methods.approve(ADDR2, 20).send({from: ADDR1})
+                     .then(checkResult(testName, 'isReceipt', true))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Check ADDR0 => ADDR2 allowance is 10
+            next => {erc20.methods.allowance(ADDR0, ADDR2).call()
+                     .then(checkResult(testName, 'uint256', 10))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Check ADDR1 => ADDR2 allowance is 20
+            next => {erc20.methods.allowance(ADDR1, ADDR2).call()
+                     .then(checkResult(testName, 'uint256', 20))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(finalResult(testName))}
+        ]);
+    },
+
+    t4_multiple_allowances_2:function(testName, erc20)
+    {
+        serialExec([
+
+            // Check that multiple approvals from the same owner for
+            // different spenders are correctly handled.
+
+            // Check ADDR0 => ADDR1 allowance is 0
+            next => {erc20.methods.allowance(ADDR0, ADDR1).call()
+                     .then(checkResult(testName, 'uint256', 0))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Check ADDR0 => ADDR2 allowance is 0
+            next => {erc20.methods.allowance(ADDR0, ADDR2).call()
+                     .then(checkResult(testName, 'uint256', 0))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Set allowance ADDR0 => ADDR1 to 10
+            next => {erc20.methods.approve(ADDR1, 10).send({from: ADDR0})
+                     .then(checkResult(testName, 'isReceipt', true))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Set allowance ADDR0 => ADDR2 to 20
+            next => {erc20.methods.approve(ADDR2, 20).send({from: ADDR0})
+                     .then(checkResult(testName, 'isReceipt', true))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Check ADDR0 => ADDR1 allowance is 10
+            next => {erc20.methods.allowance(ADDR0, ADDR1).call()
+                     .then(checkResult(testName, 'uint256', 10))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Check ADDR0 => ADDR2 allowance is 20
+            next => {erc20.methods.allowance(ADDR0, ADDR2).call()
+                     .then(checkResult(testName, 'uint256', 20))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(finalResult(testName))}
+        ]);
+    },
+
+    t4_symmetric_allowances:function(testName, erc20)
+    {
+        serialExec([
+
+            // Check that setting allowance for ADDR0 -> ADDR1
+            // doesn't set allowance for ADDR1 -> ADDR0
+
+            // Check ADDR0 => ADDR1 allowance is 0
+            next => {erc20.methods.allowance(ADDR0, ADDR1).call()
+                     .then(checkResult(testName, 'uint256', 0))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Check ADDR1 => ADDR0 allowance is 0
+            next => {erc20.methods.allowance(ADDR1, ADDR0).call()
+                     .then(checkResult(testName, 'uint256', 0))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Set allowance ADDR0 => ADDR1 to 10
+            next => {erc20.methods.approve(ADDR1, 10).send({from: ADDR0})
+                     .then(checkResult(testName, 'isReceipt', true))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Check ADDR0 => ADDR1 allowance is 10
+            next => {erc20.methods.allowance(ADDR0, ADDR1).call()
+                     .then(checkResult(testName, 'uint256', 10))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(next)},
+
+            // Check ADDR1 => ADDR0 allowance remains 0
+            next => {erc20.methods.allowance(ADDR0, ADDR2).call()
+                     .then(checkResult(testName, 'uint256', 0))
+                     .catch(checkResult(testName, 'isError', false))
+                     .then(finalResult(testName))}
+        ]);
+    },
+
     // -------------------------------------------------------------------------
     // Events
 
