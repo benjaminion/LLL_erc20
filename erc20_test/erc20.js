@@ -17,11 +17,6 @@
 // 3c. Run with debugging info (n = 0,1,2 or 3)
 //    > DEBUG=n node erc20.js 'regex'
 //
-// Note that testrpc often crashes or incorrectly fails transactions now.
-// This didn't used to be a problem. I think the increased asynchronicity
-// is exposing some race condition or other.  It's not so much of a problem
-// when running only a subset of the tests.
-//
 // =============================================================================
 
 // TODO - Try testing against cpp-ethereum
@@ -695,11 +690,10 @@ var testsPassed = 0, testsFailed = 0;
 console.log('Running ' + numTestsToRun + ' test'
             + (numTestsToRun == 1 ? '.' : 's.'));
 
-for (let i = 0; i < numTestsToRun; i++) {
-    let testName = testsToRun[i];
-    allTestResults[testName] = true;
-    newTest(testName, theTests[testName]);
-}
+// We now run each test sequentially. This is is much kinder to the node than
+// blatting them all out asynchronously, and results in far fewer crashes.
+// runNextTest() will be called again via processResult().
+runNextTest();
 
 // =============================================================================
 // Helper functions
@@ -725,6 +719,16 @@ function newTest(testName, test)
                 // TODO - error handling.
             }
         });
+}
+
+// Checks the global list of remaining tests and runs the next if exists.
+function runNextTest()
+{
+    let nextTestName = testsToRun.shift();
+    if (nextTestName) {
+        allTestResults[nextTestName] = true;
+        newTest(nextTestName, theTests[nextTestName]);
+    }
 }
 
 // Sometimes it's useful to serialise the execution of the asynchronous calls
@@ -758,6 +762,8 @@ function processResult(testName)
         testsFailed++;
     }
     console.log('  Tests passed: ' + testsPassed + '. Tests failed: ' + testsFailed + '.' + "\n");
+
+    runNextTest();
 }
 
 // -----------------------------------------------------------------------------
