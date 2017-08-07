@@ -1,2 +1,2 @@
 erc20_test/.node-*
-erc20_test/node_modules/
+erc20_test/node_modules*
