@@ -29,10 +29,10 @@ const abi_file = 'erc20_abi.json';
 const evm_file = 'erc20_evm.dat';
 
 // Token paramaters
-const TOTALSUPPLY = 100000;
-const DECIMALS = 2;
-const SYMBOL = 'BEN';
-const NAME = 'Ben Token'
+const TOTALSUPPLY = 100;
+const DECIMALS = 0;
+const SYMBOL = 'LLL';
+const NAME = 'LLL Coin - love to code in LLL.';
 
 // Set up Web3. Need testrpc to be running.
 const Web3 = require('web3');
@@ -110,9 +110,9 @@ const theTests = {
         // Test sending correct and non-existent function selectors
         Promise.all([
 
-            // Good function call - decimals()
-            web3.eth.call({to: erc20.options.address, data: '0x313ce567'})
-                .then(checkResult(testName, 'bytes32', decToBytes32(2)))
+            // Good function call - totalSupply()
+            web3.eth.call({to: erc20.options.address, data: '0x18160ddd'})
+                .then(checkResult(testName, 'bytes32', decToBytes32(TOTALSUPPLY)))
                 .catch(checkResult(testName, 'isError', false)),
 
             // Call to non-existent function
@@ -174,8 +174,8 @@ const theTests = {
 
     t3_transfer:function(testName, erc20)
     {
-        // Transfer 100 tokens from ADDR0 to ADDR1
-        erc20.methods.transfer(ADDR1, 100).send({from: ADDR0})
+        // Transfer 10 tokens from ADDR0 to ADDR1
+        erc20.methods.transfer(ADDR1, 10).send({from: ADDR0})
             .then(checkResult(testName, 'isReceipt', true))
             .catch(checkResult(testName, 'isError', false))
             .then(finalResult(testName));
@@ -192,8 +192,8 @@ const theTests = {
 
     t3_approve:function(testName, erc20)
     {
-        // Approve ADDR1 to transfer 100 tokens from ADDR0
-        erc20.methods.approve(ADDR1, 100).send({from: ADDR0})
+        // Approve ADDR1 to transfer 10 tokens from ADDR0
+        erc20.methods.approve(ADDR1, 10).send({from: ADDR0})
             .then(checkResult(testName, 'isReceipt', true))
             .catch(checkResult(testName, 'isError', false))
             .then(finalResult(testName));
@@ -211,7 +211,7 @@ const theTests = {
     t3_transfer_from_no_approval:function(testName, erc20)
     {
         // ADDR1 tries transfer from ADDR0 to ADDR2 without having approval
-        erc20.methods.transferFrom(ADDR0, ADDR2, 100).send({from: ADDR1})
+        erc20.methods.transferFrom(ADDR0, ADDR2, 10).send({from: ADDR1})
             .then(checkResult(testName, 'isError', true))
             .catch(checkResult(testName, 'isError', true))
             .then(finalResult(testName));
@@ -232,7 +232,7 @@ const theTests = {
 
     t4_valid_transfer:function(testName, erc20)
     {
-        let amount = 1000;
+        let amount = 10;
         let addr0_startTokens;
         let addr1_startTokens;
 
@@ -356,27 +356,27 @@ const theTests = {
                      .catch(checkResult(testName, 'isError', false))
                      .then(next)},
 
-            // Set allowance ADDR0 => ADDR1 to 1000
-            next => {erc20.methods.approve(ADDR1, 1000).send({from: ADDR0})
+            // Set allowance ADDR0 => ADDR1 to 10
+            next => {erc20.methods.approve(ADDR1, 10).send({from: ADDR0})
                      .then(checkResult(testName, 'isReceipt', true))
                      .catch(checkResult(testName, 'isError', false))
                      .then(next)},
 
-            // Check ADDR0 => ADDR1 allowance is 1000
+            // Check ADDR0 => ADDR1 allowance is 10
             next => {erc20.methods.allowance(ADDR0, ADDR1).call()
-                     .then(checkResult(testName, 'uint256', 1000))
+                     .then(checkResult(testName, 'uint256', 10))
                      .catch(checkResult(testName, 'isError', false))
                      .then(next)},
 
-            // Try to set allowance ADDR0 => ADDR1 to 500 (should fail)
-            next => {erc20.methods.approve(ADDR1, 500).send({from: ADDR0})
+            // Try to set allowance ADDR0 => ADDR1 to 5 (should fail)
+            next => {erc20.methods.approve(ADDR1, 5).send({from: ADDR0})
                      .then(checkResult(testName, 'isError', true))
                      .catch(checkResult(testName, 'isError', true))
                      .then(next)},
 
-            // Check ADDR0 => ADDR1 allowance is still 1000
+            // Check ADDR0 => ADDR1 allowance is still 10
             next => {erc20.methods.allowance(ADDR0, ADDR1).call()
-                     .then(checkResult(testName, 'uint256', 1000))
+                     .then(checkResult(testName, 'uint256', 10))
                      .catch(checkResult(testName, 'isError', false))
                      .then(next)},
 
@@ -392,15 +392,15 @@ const theTests = {
                      .catch(checkResult(testName, 'isError', false))
                      .then(next)},
 
-            // Try to set allowance ADDR0 => ADDR1 to 500 (should succeed)
-            next => {erc20.methods.approve(ADDR1, 500).send({from: ADDR0})
+            // Try to set allowance ADDR0 => ADDR1 to 5 (should succeed)
+            next => {erc20.methods.approve(ADDR1, 5).send({from: ADDR0})
                      .then(checkResult(testName, 'isReceipt', true))
                      .catch(checkResult(testName, 'isError', false))
                      .then(next)},
 
-            // Check ADDR0 => ADDR1 allowance is now 500
+            // Check ADDR0 => ADDR1 allowance is now 5
             next => {erc20.methods.allowance(ADDR0, ADDR1).call()
-                     .then(checkResult(testName, 'uint256', 500))
+                     .then(checkResult(testName, 'uint256', 5))
                      .catch(checkResult(testName, 'isError', false))
                      .then(finalResult(testName))}
         ]);
@@ -638,8 +638,8 @@ const theTests = {
 
     t5_approve_event:function(testName, erc20)
     {
-        erc20.methods.approve(ADDR1, 1234).send({from: ADDR0})
-            .then(checkResult(testName, 'event', {Approval: {_value: '1234', _owner: ADDR0, _spender: ADDR1}}))
+        erc20.methods.approve(ADDR1, 42).send({from: ADDR0})
+            .then(checkResult(testName, 'event', {Approval: {_value: '42', _owner: ADDR0, _spender: ADDR1}}))
             .catch(checkResult(testName, 'isError', false))
             .then(finalResult(testName));
     },
@@ -647,7 +647,7 @@ const theTests = {
     t5_transfer_from_event:function(testName, erc20)
     {
         serialExec([
-            next => {erc20.methods.approve(ADDR1, 1000).send({from: ADDR0})
+            next => {erc20.methods.approve(ADDR1, 50).send({from: ADDR0})
                      .catch(checkResult(testName, 'isError', false))
                      .then(next)},
 
@@ -662,7 +662,7 @@ const theTests = {
     {
         serialExec([
 
-            next => {erc20.methods.approve(ADDR1, 1000).send({from: ADDR0})
+            next => {erc20.methods.approve(ADDR1, 50).send({from: ADDR0})
                      .catch(checkResult(testName, 'isError', false))
                      .then(next)},
 

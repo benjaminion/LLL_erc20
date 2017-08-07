@@ -12,10 +12,10 @@
   ;; Token parameters.
   ;;   0x40 is a "magic number" - the text of the string is placed here
   ;;   when returning the string to the caller. See return-string below.
-  (def 'token-name-string   (lit 0x40 "Ben Token"))
-  (def 'token-symbol-string (lit 0x40 "BEN"))
-  (def 'token-decimals 2)
-  (def 'token-supply 100000) ; 1000.00 total tokens
+  (def 'token-name-string   (lit 0x40 "LLL Coin - love to code in LLL."))
+  (def 'token-symbol-string (lit 0x40 "LLL"))
+  (def 'token-decimals 0)
+  (def 'token-supply 100) ; 100 total tokens
   
   ;; Booleans
   (def 'false 0)
@@ -25,8 +25,8 @@
   (def 'mem-ret    0x00) ; Fixed due to compiler macro for return.
   (def 'mem-func   0x00) ; No conflict with mem-ret, so re-use.
   (def 'mem-keccak 0x00) ; No conflict with mem-func or mem-ret, so re-use.
-  (def 'scratch0   0x20) 
-  (def 'scratch1   0x40) 
+  (def 'scratch0   0x20)
+  (def 'scratch1   0x40)
   
   ;; Precomputed function IDs.
   (def 'get-name         0x06fdde03) ; name()
