@@ -1,5 +1,10 @@
 [
     {
+        "type":"constructor",
+        "inputs":[],
+        "outputs":[]
+    },
+    {
         "constant":true,
         "inputs":[],
         "name":"name",

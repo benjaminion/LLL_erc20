@@ -60,7 +60,10 @@ const theTests = {
     // -------------------------------------------------------------------------
     // Constant functions
 
-    t1_constants:function(testName, erc20)
+    // There's a nasty race condition in latest web3.js (1.0.0-beta.18)
+    // that prodcuces garbage when running the string tests and the constant
+    // tests concurrently, so they are now separated.
+    t1_constant_strings:function(testName, erc20)
     {
         Promise.all([
             erc20.methods.symbol().call()
@@ -68,7 +71,13 @@ const theTests = {
                 .catch(checkResult(testName, 'isError', false)),
             erc20.methods.name().call()
                 .then(checkResult(testName, 'string', NAME))
-                .catch(checkResult(testName, 'isError', false)),
+                .catch(checkResult(testName, 'isError', false))
+        ]).then(finalResult(testName));
+    },
+
+    t1_constants:function(testName, erc20)
+    {
+        Promise.all([
             erc20.methods.totalSupply().call()
                 .then(checkResult(testName, 'uint256', TOTALSUPPLY))
                 .catch(checkResult(testName, 'isError', false)),
@@ -748,7 +757,7 @@ function serialExec(callbacks)
 function logResult(testName, pass)
 {
     allTestResults[testName] &= pass;
-    debug(0, '[testAssert] ' + testName + (pass ? ' PASSED' : ' FAILED'));
+    debug(0, '[logResult] ' + testName + (pass ? ' PASSED' : ' FAILED'));
 }
 
 // Output the final result of a test when all promises have resolved
@@ -807,6 +816,7 @@ function testAssert(testName, result, type, expected)
 function compare(type, result, expected)
 {
     debug(3, '[compare] typeof result = ' + typeof result + ', typeof expected = ' + typeof expected);
+    debug(3, '[compare] result = [' + result + '], expected = [' + expected + ']');
     debug(2, '[compare] Looking for ' + type);
     switch(type) {
     case 'string':
