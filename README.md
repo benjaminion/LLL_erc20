@@ -1,3 +1,12 @@
+----
+
+LLL Coin is now [live on Mainnet](https://etherscan.io/token/0xd25e81504e0aea1e1343d61581296bc3c460978b)!
+
+Send me a note (my email address is in the source code) with some comment about your interest in LLL and a Mainnet address, and I will send you a coin :-)
+
+----
+
+
 # LLL
 
  * [Introduction](#introduction)
